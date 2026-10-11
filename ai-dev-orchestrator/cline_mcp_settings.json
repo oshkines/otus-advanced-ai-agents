@@ -1,9 +1,10 @@
 {
   "mcpServers": {
     "context7": {
-      "command": "C:\\Program Files\\nodejs\\node.exe",
+      "command": "npx",
       "args": [
-        "C:\\Users\\oshki\\AppData\\Roaming\\npm\\node_modules\\@upstash\\context7-mcp\\dist\\index.js"
+        "-y",
+        "@upstash/context7-mcp"
       ]
     }
   }
