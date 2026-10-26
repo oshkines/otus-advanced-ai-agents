@@ -1,0 +1,6 @@
+# Dev-зависимости для e2e-тестов (Windows 11, Python 3.12, без Node.js)
+# Установка:
+#   uv venv --python 3.12 .venv
+#   uv pip install --python .venv\Scripts\python.exe -r tests\requirements-dev.txt
+#   .\.venv\Scripts\python.exe -m playwright install chromium
+playwright==1.64.1

@@ -1,0 +1,25 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Секреты и локальные артефакты
+.env
+.env.*
+!.env.example
+data/
+*.db
+*.sqlite3
+
+# C++ / CMake
+build/
+out/
+CMakeUserPresets.json
+
+# Playwright
+test-results/
+playwright-report/
+
+# IDE
+.vscode/
+.idea/
