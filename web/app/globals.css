@@ -1,0 +1,324 @@
+@import "tailwindcss";
+
+/*
+ * Дизайн-токены (Tailwind v4, CSS-first).
+ * Источник истины: design.md в корне проекта, разделы 2 (Colors), 3 (Typography),
+ * 4 (Spacing & Grid), 8 (Motion). tailwind.config.js не создаётся.
+ */
+@theme {
+  /* Палитра design.md */
+  --color-canvas: #0a0e17; /* 60% площади экрана */
+  --color-surface: #161b22; /* карточки, списки, панели, сайдбар */
+  --color-surface-hover: #1c232d; /* hover-ступень surface (+10% яркости) */
+  --color-border: #30363d; /* разделители и границы */
+  --color-ink: #c9d1d9; /* основной текст */
+  --color-muted: #8b949e; /* вторичный текст, таймстампы */
+  --color-primary: #58a6ff; /* главные CTA и ссылки */
+  --color-primary-hover: #79b8ff;
+  --color-success: #238636; /* заливки: «купить билет», валидные алерты */
+  --color-success-soft: #3fb950; /* тот же success, но читаемый как текст */
+  --color-warning: #d29922; /* PENDING-классификация, предупреждения */
+  --color-danger: #f85149; /* ошибки сети / РКН */
+  --color-idle: #6e7681; /* выключено, нет данных */
+
+  /* Семантические алиасы: исторические имена компонентов (panel/line/ok/warn)
+     указывают на те же значения design.md, чтобы не дублировать hex. */
+  --color-panel: #161b22;
+  --color-panel-hover: #1c232d;
+  --color-line: #30363d;
+  --color-ok: #3fb950;
+  --color-warn: #d29922;
+
+  /* Радиусы: 6px — кнопки и пункты меню, 12px — bento-карточки (design.md §4) */
+  --radius-bento: 0.75rem;
+  --radius-control: 0.375rem;
+
+  /* Типографика design.md §3: Inter для текста, JetBrains Mono для кода */
+  --font-sans: "Inter", "Segoe UI", Tahoma, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Consolas, "Cascadia Mono", monospace;
+
+  /* Motion design.md §8: 200ms cubic-bezier(0.4, 0, 0.2, 1) */
+  --default-transition-duration: 200ms;
+  --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Северное сияние: очень медленные циклы 26–33 s, только прозрачность, сдвиг и масштаб */
+  --animate-aurora-a: aurora-sway-a 30s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  --animate-aurora-b: aurora-sway-b 33s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  --animate-aurora-c: aurora-sway-c 28s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  --animate-aurora-d: aurora-shimmer 26s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    font-family: var(--font-sans);
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  /* Инженерный стиль: заголовки не «висят» одним словом на строке */
+  h1,
+  h2 {
+    text-wrap: balance;
+  }
+
+  /* design.md §8: reduced-motion — экономия CPU на Windows 11 */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /*
+   * Космический фон: эллиптический галактический шлейф + северное сияние.
+   *
+   * Контраст (WCAG >= 7:1) держится геометрией слоёв, а не «на глаз»:
+   * фон живёт в отдельном контексте z-index: 0, контент AppShell поднят на
+   * z-index: 10 и лежит на непрозрачных --color-canvas / --color-surface.
+   * Заливки фона низкоальфные (<= 0.5), прозрачность слоя ограничена 0.8,
+   * маска гасит фон вниз экрана: светимость под текстом остаётся низкой,
+   * поэтому --color-ink (#c9d1d9) сохраняет контраст выше 7:1, а карточки,
+   * логи и сайдбар (--color-surface) не затрагиваются вовсе.
+   */
+  .aurora-backdrop {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 0;
+    height: 34rem;
+    overflow: hidden;
+    pointer-events: none;
+    opacity: 0.72;
+    background: radial-gradient(120% 78% at 50% -42%, #101a2e 0%, transparent 68%);
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      #000 0%,
+      #000 34%,
+      rgb(0 0 0 / 0.55) 68%,
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      #000 0%,
+      #000 34%,
+      rgb(0 0 0 / 0.55) 68%,
+      transparent 100%
+    );
+  }
+
+  /*
+   * Эллиптическая орбита: ядро галактики вынесено за верхнюю границу окна, в
+   * кадре остаётся нижняя дуга — «горизонт событий» под верхней панелью.
+   * Высота закреплена (viewBox 1440x440 → 27.5rem), поэтому вертикальные
+   * координаты дуги не зависят от ширины окна: при любом разрешении горизонт
+   * остаётся между шапкой и bento-сеткой. По ширине SVG растягивается
+   * (preserveAspectRatio="none"), а горизонтальное затухание к краям задаёт
+   * маска внутри viewBox — резких обрывов на границе экрана нет.
+   */
+  .galaxy-cluster {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    width: 100%;
+    height: 27.5rem;
+  }
+
+  /* Лента сияния: плавный градиент + блюр + вертикальная маска «занавеса» */
+  .aurora-ribbon {
+    position: absolute;
+    display: block;
+    border-radius: 50%;
+    filter: blur(22px);
+    mix-blend-mode: screen;
+    will-change: opacity, transform;
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 0%,
+      #000 28%,
+      #000 56%,
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0%,
+      #000 28%,
+      #000 56%,
+      transparent 100%
+    );
+  }
+
+  /* Глубокий синий: основная масса сияния */
+  .aurora-ribbon--midnight {
+    top: -15rem;
+    left: -12%;
+    width: 84%;
+    height: 30rem;
+    rotate: -9deg;
+    background: linear-gradient(
+      102deg,
+      transparent 6%,
+      rgb(29 58 138 / 0.34) 20%,
+      rgb(64 105 214 / 0.22) 33%,
+      rgb(20 42 104 / 0.16) 45%,
+      transparent 62%
+    );
+  }
+
+  /* Фиолетовая ветвь */
+  .aurora-ribbon--violet {
+    top: -13rem;
+    left: 14%;
+    width: 68%;
+    height: 26rem;
+    rotate: -5deg;
+    background: linear-gradient(
+      96deg,
+      transparent 10%,
+      rgb(76 29 149 / 0.34) 28%,
+      rgb(139 61 226 / 0.2) 44%,
+      transparent 62%
+    );
+  }
+
+  /* Приглушённый красный: редкий тёплый акцент */
+  .aurora-ribbon--ember {
+    top: -12rem;
+    right: -6%;
+    width: 52%;
+    height: 22rem;
+    rotate: 7deg;
+    background: linear-gradient(
+      94deg,
+      transparent 8%,
+      rgb(120 33 44 / 0.3) 32%,
+      rgb(190 24 93 / 0.14) 50%,
+      transparent 68%
+    );
+  }
+
+  /* Мягкий белый: подсветка верхней кромки без пересвета */
+  .aurora-ribbon--veil {
+    top: -16rem;
+    left: 4%;
+    width: 92%;
+    height: 26rem;
+    rotate: -4deg;
+    background: linear-gradient(
+      100deg,
+      transparent 16%,
+      rgb(214 232 255 / 0.1) 38%,
+      rgb(232 240 255 / 0.08) 54%,
+      transparent 72%
+    );
+  }
+
+  /* Тонкая структура лучей: делает сияние очерченным, а не «пятном» */
+  .aurora-rays {
+    position: absolute;
+    top: -8rem;
+    left: 50%;
+    width: min(76rem, 140vw);
+    height: 28rem;
+    transform: translateX(-50%) rotate(-6deg);
+    filter: blur(9px);
+    opacity: 0.55;
+    mix-blend-mode: screen;
+    will-change: opacity, transform;
+    background: repeating-linear-gradient(
+      94deg,
+      transparent 0 2.6rem,
+      rgb(206 226 255 / 0.12) 2.6rem 3.1rem,
+      transparent 3.1rem 6.2rem
+    );
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 30%, transparent 96%);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 30%, transparent 96%);
+  }
+}
+
+/* Сияние «дышит» 26–33 s: меняются только прозрачность, сдвиг и масштаб */
+@keyframes aurora-sway-a {
+  0%,
+  100% {
+    opacity: 0.58;
+    transform: translate3d(-2.5%, 0, 0) scale(1);
+  }
+  28% {
+    opacity: 0.94;
+    transform: translate3d(1.5%, 1%, 0) scale(1.06);
+  }
+  54% {
+    opacity: 0.7;
+    transform: translate3d(3%, -0.5%, 0) scale(1.02);
+  }
+  76% {
+    opacity: 0.88;
+    transform: translate3d(0.5%, 1.5%, 0) scale(1.07);
+  }
+}
+
+@keyframes aurora-sway-b {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: translate3d(2%, 0, 0) scale(1.04);
+  }
+  32% {
+    opacity: 0.86;
+    transform: translate3d(-2%, -1.5%, 0) scale(0.98);
+  }
+  62% {
+    opacity: 0.64;
+    transform: translate3d(-3.5%, 1%, 0) scale(1.08);
+  }
+  84% {
+    opacity: 0.8;
+    transform: translate3d(1%, -0.5%, 0) scale(1.01);
+  }
+}
+
+@keyframes aurora-sway-c {
+  0%,
+  100% {
+    opacity: 0.42;
+    transform: translate3d(0, 0, 0) scale(0.99);
+  }
+  36% {
+    opacity: 0.74;
+    transform: translate3d(-2.5%, 1.5%, 0) scale(1.05);
+  }
+  68% {
+    opacity: 0.52;
+    transform: translate3d(2%, -1%, 0) scale(1.02);
+  }
+}
+
+@keyframes aurora-shimmer {
+  0%,
+  100% {
+    opacity: 0.34;
+    transform: translateX(-50%) rotate(-6deg);
+  }
+  40% {
+    opacity: 0.6;
+    transform: translateX(-48.5%) rotate(-4.5deg);
+  }
+  70% {
+    opacity: 0.42;
+    transform: translateX(-51.5%) rotate(-7deg);
+  }
+}
