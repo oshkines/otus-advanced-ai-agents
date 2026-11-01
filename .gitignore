@@ -1,0 +1,40 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Секреты и локальные артефакты
+.env
+.env.*
+!.env.example
+data/
+*.db
+*.sqlite3
+
+# C++ / CMake
+build/
+out/
+CMakeUserPresets.json
+
+# Playwright
+test-results/
+playwright-report/
+
+# Локальные отладочные артефакты (скриншоты, логи, профили headless Chrome)
+tmp-*
+screenshot-dashboard.png
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Node / Next.js (web dashboard)
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+.screenshots/
+web/*.log
+

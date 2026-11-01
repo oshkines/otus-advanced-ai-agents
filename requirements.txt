@@ -1,0 +1,15 @@
+# Runtime-зависимости Python-воркеров (Windows 11, Python 3.12)
+# Установка:
+#   uv pip install --python .venv\Scripts\python.exe -r requirements.txt
+#
+# requests - HTTP-транспорт agents/telegram_sender.py (при отсутствии пакета
+# сендер откатывается на urllib из стандартной библиотеки).
+requests>=2.32,<3
+
+# agents/mail_worker.py - асинхронный почтовый воркер (Pure Async, без потоков):
+#   aioimaplib - IMAP4rev1 на asyncio (сетевой I/O чистыми корутинами);
+#   httpx      - асинхронный POST уведомлений в C++ ядро (CORE_HTTP_URL);
+#   openai     - AsyncOpenAI для каскада DeepSeek (classifier/summarizer).
+aioimaplib>=2.0,<3
+httpx>=0.27,<1
+openai>=1.50,<4
