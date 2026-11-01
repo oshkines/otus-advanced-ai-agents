@@ -1,0 +1,51 @@
+{
+  "version": "0.1.0",
+  "core": {
+    "name": "ai-dev-orchestrator-core",
+    "runtime": "cpp20",
+    "target_platform": "windows-11-msvc2022",
+    "log_level": "info",
+    "timezone": "Europe/Moscow",
+    "tick_interval_sec": 30
+  },
+  "workers": [
+    {
+      "id": "vacancy_scanner",
+      "script": "agents/vacancy_scanner.py",
+      "interpreter": "python",
+      "enabled": false,
+      "schedule": "0 */6 * * *",
+      "timeout_sec": 180,
+      "stdout_format": "json",
+      "env_required": [],
+      "args": ["--tags", "C++, 1C, Remote"]
+    },
+    {
+      "id": "telegram_watcher",
+      "script": "agents/telegram_watcher.py",
+      "interpreter": "python",
+      "enabled": false,
+      "schedule": "*/5 * * * *",
+      "timeout_sec": 120,
+      "stdout_format": "json",
+      "env_required": ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"],
+      "args": []
+    }
+  ],
+  "storage": {
+    "sqlite": {
+      "path": "data/cache.db",
+      "dedup_window_days": 30,
+      "tables": ["processed_messages", "processed_emails"]
+    }
+  },
+  "ui": {
+    "status_panel": "src/status_panel.html",
+    "auto_open": false
+  },
+  "e2e": {
+    "runner": "python-playwright",
+    "test_script": "tests/browser_test.py",
+    "screenshot": ".planning/screenshots/green_e2e_test.png"
+  }
+}
