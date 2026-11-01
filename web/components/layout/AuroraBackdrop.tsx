@@ -9,10 +9,12 @@ interface StarDot {
 }
 
 /**
- * Параметры эллиптического шлейфа: широкий вытянутый овал, который плавно
- * расходится влево и вправо по верхней панели. `lanes` — относительные радиусы
- * «дорожек» внутри овала (0.68 / 0.86 / 1), за счёт них шлейф читается как
- * объёмная структура, а не как одна линия.
+ * Параметры эллиптической орбиты: широкий вытянутый овал, нижняя дуга которого
+ * проходит по верхней панели и уходит под карточки. `laneOffsets` — смещения
+ * «дорожек» по вертикальному радиусу в px: дорожки идут почти параллельно друг
+ * другу, поэтому шлейф читается как объёмная структура, а не как одна линия, и
+ * не разваливается на вложенные овалы (при больших `ry` множители вроде
+ * 0.68 / 0.86 разносили бы дуги на сотни пикселей).
  */
 interface EllipticalTrailOptions {
   readonly id: string;
@@ -21,11 +23,20 @@ interface EllipticalTrailOptions {
   readonly rx: number;
   readonly ry: number;
   readonly tilt: number;
-  readonly lanes: readonly number[];
+  readonly laneOffsets: readonly number[];
   readonly dotsPerLane: number;
   readonly seed: number;
   readonly opacity: number;
 }
+
+/**
+ * Во сколько раз горизонтальный радиус дорожки растёт вслед за вертикальным
+ * смещением: так дорожки остаются почти параллельными дуге горизонта.
+ */
+const LANE_RX_PER_RY = 2.6;
+
+/** Полуразмах горизонтального градиента нити горизонта (px в координатах viewBox). */
+const HORIZON_REACH = 740;
 
 /**
  * Детерминированный псевдошум: одинаковый результат на сервере и клиенте,
@@ -52,16 +63,18 @@ function buildTrailDots(options: EllipticalTrailOptions): readonly StarDot[] {
   const cosTilt = Math.cos(tiltRadians);
   const sinTilt = Math.sin(tiltRadians);
 
-  options.lanes.forEach((lane, laneIndex) => {
-    const count = Math.round(options.dotsPerLane * (0.78 + laneIndex * 0.16));
+  options.laneOffsets.forEach((offset, laneIndex) => {
+    const count = Math.round(options.dotsPerLane * (0.82 + laneIndex * 0.12));
     const step = (Math.PI * 2) / count;
+    const laneRx = options.rx + offset * LANE_RX_PER_RY;
+    const laneRy = options.ry + offset;
 
     for (let index = 0; index < count; index += 1) {
       const seed = options.seed + laneIndex * 211 + index;
       const angle = index * step + (pseudoNoise(seed) - 0.5) * step * 0.6;
-      const radial = lane * (1 + (pseudoNoise(seed + 7) - 0.5) * 0.05);
-      const x = Math.cos(angle) * options.rx * radial;
-      const y = Math.sin(angle) * options.ry * radial;
+      const radial = 1 + (pseudoNoise(seed + 7) - 0.5) * 0.012;
+      const x = Math.cos(angle) * laneRx * radial;
+      const y = Math.sin(angle) * laneRy * radial;
 
       /* 1 у концов овала (там звёзды гаснут), 0 в центре (там ярче) */
       const edge = Math.abs(Math.cos(angle));
@@ -81,9 +94,11 @@ function buildTrailDots(options: EllipticalTrailOptions): readonly StarDot[] {
   return dots;
 }
 
-/** Один шлейф: мягкая дымка по форме овала, разреженные звёзды и светящееся ядро. */
+/** Один шлейф: мягкая дымка по форме овала, разреженные звёзды и линия горизонта. */
 function EllipticalTrail({ trail }: { readonly trail: EllipticalTrailOptions }): ReactElement {
   const dots = buildTrailDots(trail);
+  /* Нижняя точка орбиты — она же линия горизонта на верхней панели. */
+  const limbY = trail.cy + trail.ry;
 
   return (
     <g opacity={trail.opacity} transform={`rotate(${trail.tilt} ${trail.cx} ${trail.cy})`}>
@@ -113,23 +128,76 @@ function EllipticalTrail({ trail }: { readonly trail: EllipticalTrailOptions }):
         <filter id={`${trail.id}-soft`} x="-30%" y="-30%" width="160%" height="160%">
           <feGaussianBlur stdDeviation={12} />
         </filter>
+        <filter id={`${trail.id}-glow`} x="-20%" y="-40%" width="140%" height="180%">
+          <feGaussianBlur stdDeviation={5} />
+        </filter>
+        {/*
+         * Небо горизонта: заливка внутренней части орбиты. Градиент идёт сверху
+         * вниз и обрывается на линии горизонта — над дугой появляется мягкое
+         * свечение, а ниже остаётся чистый --color-canvas.
+         */}
+        <linearGradient
+          id={`${trail.id}-sky`}
+          gradientUnits="userSpaceOnUse"
+          x1={0}
+          y1={limbY - 170}
+          x2={0}
+          y2={limbY + 6}
+        >
+          <stop offset="0%" stopColor="#6f86d8" stopOpacity={0} />
+          <stop offset="45%" stopColor="#8fa6ff" stopOpacity={0.03} />
+          <stop offset="72%" stopColor="#a7bbff" stopOpacity={0.055} />
+          <stop offset="88%" stopColor="#c2d4ff" stopOpacity={0.08} />
+          <stop offset="100%" stopColor="#dbe7ff" stopOpacity={0.11} />
+        </linearGradient>
+        {/*
+         * Нить горизонта: горизонтальный градиент собирает свечение в центре
+         * верхней панели и гасит дугу к краям окна — резких обрывов нет.
+         */}
+        <linearGradient
+          id={`${trail.id}-rim`}
+          gradientUnits="userSpaceOnUse"
+          x1={trail.cx - HORIZON_REACH}
+          y1={0}
+          x2={trail.cx + HORIZON_REACH}
+          y2={0}
+        >
+          <stop offset="0%" stopColor="#9fb4ff" stopOpacity={0.08} />
+          <stop offset="12%" stopColor="#a9bcff" stopOpacity={0.4} />
+          <stop offset="28%" stopColor="#b9caff" stopOpacity={0.62} />
+          <stop offset="42%" stopColor="#e2ecff" stopOpacity={0.85} />
+          <stop offset="50%" stopColor="#ffffff" stopOpacity={1} />
+          <stop offset="58%" stopColor="#e2ecff" stopOpacity={0.85} />
+          <stop offset="72%" stopColor="#b9caff" stopOpacity={0.62} />
+          <stop offset="88%" stopColor="#a9bcff" stopOpacity={0.42} />
+          <stop offset="100%" stopColor="#9fb4ff" stopOpacity={0.3} />
+        </linearGradient>
       </defs>
+
+      {/* Небо горизонта: мягкая заливка внутренней части орбиты, ярче у дуги */}
+      <ellipse
+        cx={trail.cx}
+        cy={trail.cy}
+        rx={trail.rx}
+        ry={trail.ry}
+        fill={`url(#${trail.id}-sky)`}
+      />
 
       {/* Дымка шлейфа: размытые полосы вдоль овала, без «рельсов» и рёбер */}
       <g
         fill="none"
         stroke="#8ea6ff"
-        strokeWidth={26}
-        opacity={0.09}
+        strokeWidth={24}
+        opacity={0.08}
         filter={`url(#${trail.id}-soft)`}
       >
-        {trail.lanes.map((lane, index) => (
+        {trail.laneOffsets.map((offset, index) => (
           <ellipse
             key={`${trail.id}-lane-${index}`}
             cx={trail.cx}
             cy={trail.cy}
-            rx={trail.rx * lane}
-            ry={trail.ry * lane}
+            rx={trail.rx + offset * LANE_RX_PER_RY}
+            ry={trail.ry + offset}
           />
         ))}
       </g>
@@ -138,8 +206,8 @@ function EllipticalTrail({ trail }: { readonly trail: EllipticalTrailOptions }):
       <ellipse
         cx={trail.cx}
         cy={trail.cy}
-        rx={trail.rx * 0.82}
-        ry={trail.ry * 1.2}
+        rx={trail.rx * 0.9}
+        ry={trail.ry * 1.15}
         fill={`url(#${trail.id}-halo)`}
       />
 
@@ -156,7 +224,44 @@ function EllipticalTrail({ trail }: { readonly trail: EllipticalTrailOptions }):
         ))}
       </g>
 
-      {/* Ядро: мягкое свечение без жёстких границ, чтобы не спорить с заголовком */}
+      {/* Ореол горизонта: размытая широкая дуга, повторяющая нижнюю часть орбиты */}
+      <ellipse
+        cx={trail.cx}
+        cy={trail.cy}
+        rx={trail.rx}
+        ry={trail.ry}
+        stroke={`url(#${trail.id}-rim)`}
+        strokeWidth={26}
+        opacity={0.22}
+        filter={`url(#${trail.id}-soft)`}
+      />
+
+      {/* Ближний свет: узкое свечение вокруг нити, держит дугу очерченной */}
+      <ellipse
+        cx={trail.cx}
+        cy={trail.cy}
+        rx={trail.rx}
+        ry={trail.ry}
+        stroke={`url(#${trail.id}-rim)`}
+        strokeWidth={8}
+        opacity={0.5}
+        filter={`url(#${trail.id}-glow)`}
+      />
+
+      {/* Нить горизонта: тонкая светящаяся дуга, гаснущая к краям окна */}
+      <ellipse
+        cx={trail.cx}
+        cy={trail.cy}
+        rx={trail.rx}
+        ry={trail.ry}
+        stroke={`url(#${trail.id}-rim)`}
+        strokeWidth={1.8}
+      />
+
+      {/*
+       * Ядро: живёт выше верхней границы окна — в кадр попадает только его
+       * отсвет, поэтому за карточками «Модули» нет пересвеченного пятна.
+       */}
       <ellipse
         cx={trail.cx}
         cy={trail.cy}
@@ -174,16 +279,21 @@ function EllipticalTrail({ trail }: { readonly trail: EllipticalTrailOptions }):
     </g>
   );
 }
-/** Широкий вытянутый шлейф: расходится влево и вправо по всей верхней панели. */
+/**
+ * Орбита галактики: ядро вынесено далеко за верхнюю границу окна, поэтому в
+ * кадр попадает только нижняя часть эллипса — мягкая вытянутая дуга горизонта.
+ * `rx` заметно больше половины ширины viewBox: концы дуги уходят за края
+ * экрана и не обрываются в видимой области.
+ */
 const MAIN_TRAIL: EllipticalTrailOptions = {
   id: "galaxy-trail",
-  cx: 720,
-  cy: 236,
-  rx: 648,
-  ry: 88,
-  tilt: -3,
-  lanes: [0.68, 0.86, 1],
-  dotsPerLane: 76,
+  cx: 860,
+  cy: -306,
+  rx: 1600,
+  ry: 426,
+  tilt: 0,
+  laneOffsets: [0, 22, 58],
+  dotsPerLane: 220,
   seed: 5.3,
   opacity: 0.9,
 };
@@ -193,12 +303,16 @@ const VIEW_WIDTH = 1440;
 const VIEW_HEIGHT = 440;
 
 /**
- * Декоративный фон: эллиптический галактический шлейф (инлайн-SVG) и северное
+ * Декоративный фон: эллиптическая орбита галактики (инлайн-SVG) и северное
  * сияние из плавных градиентных лент с очень медленным циклом 26–33 s.
  *
- * Геометрия фона: овал вытянут по горизонтали и расходится по всей верхней
- * панели, звёзды разрежены (постоянный шаг по углу), а mask-градиент гасит
- * шлейф у левого и правого краёв — переход в фон без резких обрывов.
+ * Геометрия фона: ядро галактики вынесено далеко за верхнюю границу окна,
+ * поэтому в кадр попадает только нижняя дуга орбиты — она читается как
+ * «горизонт событий»: мягкая вытянутая светящаяся дуга в центре верхней
+ * панели, концы которой уходят за края окна, а нижние дорожки плавно
+ * спускаются под карточки «Модули». mask-градиент гасит шлейф у левого и
+ * правого краёв, а нить горизонта собрана в центре, поэтому заголовок «Обзор»
+ * и метаданные лежат на затемнённом участке с сохранённым контрастом.
  *
  * Инварианты контраста (WCAG >= 7:1): слой живёт в отдельном контексте
  * `z-index: 0`, а контент AppShell поднят на `z-index: 10` и лежит на
@@ -214,6 +328,7 @@ export function AuroraBackdrop(): ReactElement {
       <svg
         className="galaxy-cluster"
         viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
+        preserveAspectRatio="none"
         fill="none"
         focusable="false"
         aria-hidden="true"
@@ -222,10 +337,14 @@ export function AuroraBackdrop(): ReactElement {
           {/* Мягкое затухание к краям экрана: маска по горизонтали */}
           <linearGradient id="galaxy-edge-fade" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stopColor="#ffffff" stopOpacity={0} />
-            <stop offset="15%" stopColor="#ffffff" stopOpacity={0.8} />
+            <stop offset="6%" stopColor="#ffffff" stopOpacity={0.3} />
+            <stop offset="14%" stopColor="#ffffff" stopOpacity={0.7} />
+            <stop offset="22%" stopColor="#ffffff" stopOpacity={0.93} />
             <stop offset="32%" stopColor="#ffffff" stopOpacity={1} />
             <stop offset="68%" stopColor="#ffffff" stopOpacity={1} />
-            <stop offset="85%" stopColor="#ffffff" stopOpacity={0.8} />
+            <stop offset="78%" stopColor="#ffffff" stopOpacity={0.93} />
+            <stop offset="86%" stopColor="#ffffff" stopOpacity={0.7} />
+            <stop offset="94%" stopColor="#ffffff" stopOpacity={0.3} />
             <stop offset="100%" stopColor="#ffffff" stopOpacity={0} />
           </linearGradient>
           <mask
