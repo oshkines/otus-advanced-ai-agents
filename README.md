@@ -29,6 +29,9 @@ ai-dev-orchestrator/
 ├── web/                     # Next.js 15 + Tailwind v4 bento-дашборд (см. web/README.md)
 ├── tests/                   # pytest + Playwright Python (e2e), мок-вебхуки
 ├── design.md                # спецификация UI: палитра, типографика, сетка, состояния
+├── docs/handoff/            # PRD_CHALLENGE.md: персоны, User Stories с AC, деградация
+├── docs/research/           # BENCHMARKING.md: ресерч аналогов и обоснование палитры
+├── docs/troubleshooting.md  # журнал ошибок и решений: сначала смотрим сюда при любой ошибке
 ├── .clinerules/gsd.md       # локальные правила GSD-Core
 ├── gsd-core/                # развёрнутый фреймворк GSD-Core (workflows, agents, bin/gsd-tools.cjs)
 └── pre-commit.bat           # валидация конфигурации перед фиксацией кода

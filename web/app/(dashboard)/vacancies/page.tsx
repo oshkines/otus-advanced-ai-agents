@@ -36,6 +36,7 @@ export default async function VacanciesPage(): Promise<ReactElement> {
     <>
       <SectionHeader
         section={section}
+        generatedAtIso={snapshot.generatedAtIso}
         title="Вакансии"
         description="Сканер вакансий по тегам из config/orchestrator.json (workers[vacancy_scanner].args)"
       />

@@ -35,6 +35,7 @@ export default async function EmailPage(): Promise<ReactElement> {
     <>
       <SectionHeader
         section={section}
+        generatedAtIso={snapshot.generatedAtIso}
         title="Email"
         description="Входящие письма с ИИ-вердиктами: что ответить, что проверить, что в архив"
       />

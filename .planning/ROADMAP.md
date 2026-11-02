@@ -85,13 +85,16 @@
 
 ---
 
-## Phase 5 — Bento Dashboard UI (Next.js 15 + Tailwind v4) `IN PROGRESS`
+## Phase 5 — Bento Dashboard UI (Next.js 15 + Tailwind v4) `READY FOR REVIEW`
 
 **Цель:** bento-дашборд с левым меню (Обзор, Email, Вакансии, РЖД), полностью управляемый
 конфигом `config/orchestrator.json`; вариант A (Config-SSR) с точкой расширения до BFF.
 
 **Deliverables:**
-- `.planning/phases/phase-05-bento-dashboard/{DISCUSS,DESIGN,CONTRACT}.md` — решения, спека, контракт.
+- `.planning/phases/phase-05-bento-dashboard/{DISCUSS,DESIGN,CONTRACT,PLAN}.md` — решения, спека,
+  контракт, план (MoSCoW, 12 рисков, exit criteria).
+- `docs/research/BENCHMARKING.md` — ресерч аналогов и обоснование палитры;
+  `docs/handoff/PRD_CHALLENGE.md` — персоны, User Stories с AC и сценарии деградации.
 - `config/orchestrator.json` v0.2.0: секция `ui.dashboard.navigation`, воркеры-описания
   `email_watcher` и `rzhd_watcher` (`enabled: false`, только имена env-переменных).
 - `web/` — Next.js App Router + Tailwind CSS v4 (CSS-first `@theme`), маршруты `/`, `/email`,

@@ -20,8 +20,9 @@
 └───────────────┴──────────────────────────────────────────────────────────────┘
 ```
 
-- Контейнер: `min-h-screen`, `bg-canvas`, `text-ink`, шрифт `Segoe UI, Tahoma, sans-serif`
-  (консистентно с `src/status_panel.html`).
+- Контейнер: `min-h-screen`, `bg-canvas`, `text-ink`, шрифт
+  `Inter, "Segoe UI", Tahoma, system-ui, sans-serif` (`--font-sans` в `web/app/globals.css`;
+  консистентно с `src/status_panel.html`).
 - Sidebar фиксированный на `lg`, на мобильных схлопывается в верхнюю полосу со скроллом.
 - Основная область: `p-4 lg:p-6`, ограничение `max-w-[1600px]`.
 
@@ -29,22 +30,37 @@
 
 `web/app/globals.css`:
 
+`web/app/globals.css` — **единственный источник истины по токенам**; значения синхронизированы
+с корневым `design.md` §2–§4 (ревизия 02.11.2026):
+
 | CSS-переменная `@theme` | Значение | Утилита | Назначение |
 |---|---|---|---|
-| `--color-canvas` | `#0f172a` | `bg-canvas` | фон приложения |
-| `--color-panel` | `#1e293b` | `bg-panel` | фон bento-карточки |
-| `--color-panel-hover` | `#243044` | `bg-panel-hover` | hover карточки-ссылки |
-| `--color-line` | `#334155` | `border-line` | границы, разделители |
-| `--color-ink` | `#e2e8f0` | `text-ink` | основной текст |
-| `--color-muted` | `#94a3b8` | `text-muted` | вторичный текст |
-| `--color-ok` | `#22c55e` | `text-ok` | «всё хорошо» / running |
-| `--color-warn` | `#f59e0b` | `text-warn` | предупреждение |
-| `--color-danger` | `#ef4444` | `text-danger` | ошибка |
-| `--color-idle` | `#64748b` | `text-idle` | выключено / `not_connected` |
-| `--radius-bento` | `1rem` | `rounded-bento` | радиус карточек |
-| `--font-mono` | `Consolas, "Courier New", monospace` | `font-mono` | значения, пути, JSON |
+| `--color-canvas` | `#0A0E17` | `bg-canvas` | фон приложения (60% площади экрана) |
+| `--color-surface` | `#161B22` | `bg-surface` | фон bento-карточки, сайдбара, списков |
+| `--color-surface-hover` | `#1C232D` | `bg-surface-hover` | hover карточки-ссылки (+10% яркости) |
+| `--color-border` | `#30363D` | `border-border` | границы, разделители |
+| `--color-ink` | `#C9D1D9` | `text-ink` | основной текст |
+| `--color-muted` | `#8B949E` | `text-muted` | вторичный текст, таймстампы, метаданные |
+| `--color-primary` | `#58A6FF` | `text-primary` / `bg-primary` | CTA, ссылки, активный пункт меню |
+| `--color-primary-hover` | `#79B8FF` | `text-primary-hover` | hover ссылок и кнопок |
+| `--color-success` | `#238636` | `bg-success` | заливки success («Купить билет РЖД») |
+| `--color-success-soft` | `#3FB950` | `text-success-soft` / `bg-success-soft` | success как текст и точки статусов |
+| `--color-warning` | `#D29922` | `text-warning` / `bg-warning` | PENDING, `not_connected`, деградация |
+| `--color-danger` | `#F85149` | `text-danger` / `border-danger` | ошибки сети / РКН / ConfigError |
+| `--color-idle` | `#6E7681` | `text-idle` / `bg-idle` | выключено, нет данных |
+| `--radius-bento` | `0.75rem` (12px) | `rounded-bento` | радиус bento-карточек |
+| `--radius-control` | `0.375rem` (6px) | `rounded-control` | кнопки, поля ввода, пункты меню |
+| `--font-sans` | `"Inter", "Segoe UI", Tahoma, system-ui, sans-serif` | `font-sans` | текст интерфейса |
+| `--font-mono` | `"JetBrains Mono", "SF Mono", "Cascadia Mono", ui-monospace, monospace` | `font-mono` | значения, пути, JSON, логи |
 
-Палитра перенесена из заглушки `src/status_panel.html` → визуальная преемственность.
+Семантические алиасы `--color-panel`, `--color-panel-hover`, `--color-line`, `--color-ok`,
+`--color-warn` указывают на те же значения и сохранены только ради исторических компонентов;
+новый код использует имена `canvas / surface / border / ink / muted / primary / success / warning / danger / idle`.
+
+> **Slate-палитра (`#0F172A`, `#1E293B`, `#334155`, `#94A3B8`) и шрифт `Consolas` выведены
+> из проекта 02.11.2026.** Они остались от заглушки `src/status_panel.html` и расходились
+> с корневым `design.md` §2–§3. Источник истины: `design.md` + `web/app/globals.css`,
+> заглушка статус-панели приведена к тем же токенам.
 
 > `tailwind.config.js` **не создаётся**: в Tailwind v4 тема задаётся директивой `@theme`
 > в CSS, PostCSS-плагин — `@tailwindcss/postcss` (см. `web/postcss.config.mjs`).
@@ -138,7 +154,8 @@ web/
 - Sidebar — `<nav aria-label="Основная навигация">`, активный пункт `aria-current="page"`.
 - Статус — `role="status"` и текстовое значение (не только цвет).
 - Карточки-ссылки — реальная ссылка (`<Link>`/`<a>`), фокус-кольцо `focus-visible:ring-2`.
-- Контраст `text-muted` на `bg-panel` ≥ 4.5:1 (slate-400 на slate-800).
+- Контраст посчитан по WCAG 2.1: `--color-muted` (#8B949E) на `--color-surface` (#161B22) —
+  **5.6:1** (AA), `--color-ink` (#C9D1D9) на `--color-canvas` (#0A0E17) — **12.5:1** (AAA).
 
 ## 7. Тестовые якоря (для Playwright Python, следующий шаг)
 

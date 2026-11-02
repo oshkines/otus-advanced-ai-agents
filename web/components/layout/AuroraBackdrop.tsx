@@ -147,12 +147,15 @@ function EllipticalTrail({ trail }: { readonly trail: EllipticalTrailOptions }):
           <stop offset="0%" stopColor="#6f86d8" stopOpacity={0} />
           <stop offset="45%" stopColor="#8fa6ff" stopOpacity={0.03} />
           <stop offset="72%" stopColor="#a7bbff" stopOpacity={0.055} />
-          <stop offset="88%" stopColor="#c2d4ff" stopOpacity={0.08} />
-          <stop offset="100%" stopColor="#dbe7ff" stopOpacity={0.11} />
+          <stop offset="88%" stopColor="#c2d4ff" stopOpacity={0.06} />
+          <stop offset="100%" stopColor="#dbe7ff" stopOpacity={0.085} />
         </linearGradient>
         {/*
          * Нить горизонта: горизонтальный градиент собирает свечение в центре
          * верхней панели и гасит дугу к краям окна — резких обрывов нет.
+         * Пик — не белый, а мягкий серо-голубой #cbd8f4 с прозрачностью 0.56:
+         * после общей прозрачности слоя (0.72) дуга остаётся неяркой и не
+         * пересвечивает текст заголовка и метаданные (WCAG >= 7:1 на --color-ink).
          */}
         <linearGradient
           id={`${trail.id}-rim`}
@@ -162,15 +165,15 @@ function EllipticalTrail({ trail }: { readonly trail: EllipticalTrailOptions }):
           x2={trail.cx + HORIZON_REACH}
           y2={0}
         >
-          <stop offset="0%" stopColor="#9fb4ff" stopOpacity={0.08} />
-          <stop offset="12%" stopColor="#a9bcff" stopOpacity={0.4} />
-          <stop offset="28%" stopColor="#b9caff" stopOpacity={0.62} />
-          <stop offset="42%" stopColor="#e2ecff" stopOpacity={0.85} />
-          <stop offset="50%" stopColor="#ffffff" stopOpacity={1} />
-          <stop offset="58%" stopColor="#e2ecff" stopOpacity={0.85} />
-          <stop offset="72%" stopColor="#b9caff" stopOpacity={0.62} />
-          <stop offset="88%" stopColor="#a9bcff" stopOpacity={0.42} />
-          <stop offset="100%" stopColor="#9fb4ff" stopOpacity={0.3} />
+          <stop offset="0%" stopColor="#7f8bb8" stopOpacity={0.04} />
+          <stop offset="12%" stopColor="#8f9fd6" stopOpacity={0.18} />
+          <stop offset="28%" stopColor="#9db0e8" stopOpacity={0.3} />
+          <stop offset="42%" stopColor="#b3c5f2" stopOpacity={0.44} />
+          <stop offset="50%" stopColor="#cbd8f4" stopOpacity={0.56} />
+          <stop offset="58%" stopColor="#b3c5f2" stopOpacity={0.44} />
+          <stop offset="72%" stopColor="#9db0e8" stopOpacity={0.3} />
+          <stop offset="88%" stopColor="#8f9fd6" stopOpacity={0.18} />
+          <stop offset="100%" stopColor="#7f8bb8" stopOpacity={0.1} />
         </linearGradient>
       </defs>
 
@@ -232,7 +235,7 @@ function EllipticalTrail({ trail }: { readonly trail: EllipticalTrailOptions }):
         ry={trail.ry}
         stroke={`url(#${trail.id}-rim)`}
         strokeWidth={26}
-        opacity={0.22}
+        opacity={0.16}
         filter={`url(#${trail.id}-soft)`}
       />
 
@@ -244,7 +247,7 @@ function EllipticalTrail({ trail }: { readonly trail: EllipticalTrailOptions }):
         ry={trail.ry}
         stroke={`url(#${trail.id}-rim)`}
         strokeWidth={8}
-        opacity={0.5}
+        opacity={0.36}
         filter={`url(#${trail.id}-glow)`}
       />
 
@@ -284,6 +287,15 @@ function EllipticalTrail({ trail }: { readonly trail: EllipticalTrailOptions }):
  * кадр попадает только нижняя часть эллипса — мягкая вытянутая дуга горизонта.
  * `rx` заметно больше половины ширины viewBox: концы дуги уходят за края
  * экрана и не обрываются в видимой области.
+ *
+ * Инварианты геометрии (проверяются по этим числам, 1 единица viewBox = 1 px):
+ * — ядро целиком выше кадра: нижняя кромка `cy + 0.7·ry = -7.8` px < 0, то есть
+ *   в кадр попадает только отсвет, а не само ядро;
+ * — линия горизонта `cy + ry = 120` px лежит в зазоре между верхней панелью
+ *   (заголовок + метаданные, до ~93 px) и заголовком секции, поэтому дуга не
+ *   пересекает текст;
+ * — центр дуги `cx / VIEW_WIDTH = 60%` совпадает с центром контентной колонки
+ *   (сайдбар 256 px слева), а не геометрическим центром окна.
  */
 const MAIN_TRAIL: EllipticalTrailOptions = {
   id: "galaxy-trail",

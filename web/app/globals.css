@@ -33,9 +33,9 @@
   --radius-bento: 0.75rem;
   --radius-control: 0.375rem;
 
-  /* Типографика design.md §3: Inter для текста, JetBrains Mono для кода */
+  /* Типографика design.md §3: Inter для текста, JetBrains Mono для кода и логов */
   --font-sans: "Inter", "Segoe UI", Tahoma, system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", Consolas, "Cascadia Mono", monospace;
+  --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Mono", ui-monospace, monospace;
 
   /* Motion design.md §8: 200ms cubic-bezier(0.4, 0, 0.2, 1) */
   --default-transition-duration: 200ms;
@@ -88,7 +88,7 @@
    * Контраст (WCAG >= 7:1) держится геометрией слоёв, а не «на глаз»:
    * фон живёт в отдельном контексте z-index: 0, контент AppShell поднят на
    * z-index: 10 и лежит на непрозрачных --color-canvas / --color-surface.
-   * Заливки фона низкоальфные (<= 0.5), прозрачность слоя ограничена 0.8,
+   * Заливки фона низкоальфные (<= 0.56), прозрачность слоя ограничена 0.72,
    * маска гасит фон вниз экрана: светимость под текстом остаётся низкой,
    * поэтому --color-ink (#c9d1d9) сохраняет контраст выше 7:1, а карточки,
    * логи и сайдбар (--color-surface) не затрагиваются вовсе.

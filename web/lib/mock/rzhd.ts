@@ -23,6 +23,18 @@ export const CAR_TYPE_LABEL: Readonly<Record<CarType, string>> = {
   sv: "СВ",
 };
 
+/**
+ * Окно каникул сына (Алфёровский университет) — единственный источник дат
+ * для UI, countdown и валидации формы пассажира (PRD_CHALLENGE.md US-RZ-01/04/05).
+ * После Phase 6 значения приходят из `rzhd_watcher`, а не из MOCK-модуля.
+ */
+export const HOLIDAY_WINDOW = {
+  outbound: "2026-12-26",
+  inbound: "2027-01-09",
+  label: "26.12.2026 — 09.01.2027",
+} as const;
+
+
 export const MOCK_TRAIN_OFFERS: readonly MockTrainOffer[] = [
   {
     id: "rzd-001",

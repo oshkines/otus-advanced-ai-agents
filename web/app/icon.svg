@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none">
+  <!--
+    Favicon: Trimaxion Drone Ship (Max) из «Полёта навигатора».
+    Геометрия 1:1 перенесена из web/components/icons.tsx (TrimaxionGlyph, viewBox 0 0 24 24)
+    и отцентрована в 32x32. Подложка: canvas #0a0e17, обводка: primary #58a6ff.
+    Next.js 15 подхватывает файл как file-based metadata и сам добавляет link rel="icon".
+  -->
+  <rect width="32" height="32" rx="7" fill="#0a0e17"/>
+  <g
+    transform="translate(16 16) scale(1.2) translate(-12.2 -12)"
+    fill="none"
+    stroke="#58a6ff"
+    stroke-width="1.7"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <!-- Корпус-капля: остриё слева, скруглённая корма справа -->
+    <path d="M2.6 12C6.6 9.4 10.6 7.8 14 7.8c2.6 0 4.6 1.6 5.2 3.6v1.2c-.6 2-2.6 3.6-5.2 3.6-3.4 0-7.4-1.6-11.4-4.2Z"/>
+    <!-- Купол кабины на верхней кромке -->
+    <path d="M7.6 8.9c.6-2 3.2-2.3 4.4-.7"/>
+    <!-- Дюза на корме -->
+    <path d="M17.4 10.8v2.4"/>
+    <!-- Раздвоенный хвост-стабилизатор -->
+    <path d="M16.8 8.6 21.8 5.8 18.6 10.4Z"/>
+    <path d="M16.8 15.4 21.8 18.2 18.6 13.6Z"/>
+  </g>
+</svg>

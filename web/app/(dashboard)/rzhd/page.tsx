@@ -57,6 +57,7 @@ export default async function RzhdPage(): Promise<ReactElement> {
     <>
       <SectionHeader
         section={section}
+        generatedAtIso={snapshot.generatedAtIso}
         title="РЖД"
         description="Свободные места, цены и типы вагонов на даты каникул Алфёровского вуза"
       />

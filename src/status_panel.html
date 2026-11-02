@@ -6,14 +6,18 @@
     <title>AI Dev Orchestrator — Status Panel</title>
     <style>
         :root {
-            --bg: #0f172a;
-            --panel: #1e293b;
-            --border: #334155;
-            --text: #e2e8f0;
-            --muted: #94a3b8;
-            --green: #22c55e;
-            --amber: #f59e0b;
-            --grey: #64748b;
+            /* Токены синхронизированы с design.md §2 и web/app/globals.css */
+            --bg: #0A0E17;
+            --panel: #161B22;
+            --border: #30363D;
+            --text: #C9D1D9;
+            --muted: #8B949E;
+            --accent: #58A6FF;
+            --green: #3FB950;
+            --green-fill: #238636;
+            --amber: #D29922;
+            --red: #F85149;
+            --grey: #6E7681;
         }
 
         * {
@@ -25,7 +29,7 @@
             padding: 32px;
             background: var(--bg);
             color: var(--text);
-            font-family: "Segoe UI", Tahoma, sans-serif;
+            font-family: "Inter", "Segoe UI", Tahoma, system-ui, sans-serif;
         }
 
         header {
@@ -55,7 +59,7 @@
             gap: 8px;
             padding: 8px 16px;
             border-radius: 999px;
-            background: rgba(34, 197, 94, 0.12);
+            background: rgba(35, 134, 54, 0.18);
             border: 1px solid var(--green);
             color: var(--green);
             font-size: 13px;
@@ -70,7 +74,7 @@
             height: 10px;
             border-radius: 50%;
             background: var(--green);
-            box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.2);
+            box-shadow: 0 0 0 4px rgba(63, 185, 80, 0.2);
         }
 
         .grid {
@@ -117,7 +121,7 @@
 
         .value {
             color: var(--muted);
-            font-family: Consolas, "Courier New", monospace;
+            font-family: "JetBrains Mono", "SF Mono", "Cascadia Mono", ui-monospace, monospace;
         }
 
         .ok {
@@ -136,7 +140,7 @@
             margin-top: 24px;
             color: var(--muted);
             font-size: 12px;
-            font-family: Consolas, "Courier New", monospace;
+            font-family: "JetBrains Mono", "SF Mono", "Cascadia Mono", ui-monospace, monospace;
         }
     </style>
 </head>

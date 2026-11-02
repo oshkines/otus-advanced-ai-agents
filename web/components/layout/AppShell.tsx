@@ -1,6 +1,8 @@
 import type { ReactElement, ReactNode } from "react";
 
 import { Sidebar } from "@/components/layout/Sidebar";
+import { ConfigError } from "@/components/states/ConfigError";
+import { OfflineBanner } from "@/components/states/OfflineBanner";
 import type { DashboardNavSection } from "@/lib/orchestrator/types";
 
 export interface AppShellProps {
@@ -12,7 +14,11 @@ export interface AppShellProps {
   readonly error: string | null;
 }
 
-/** Каркас приложения: sidebar + баннер ошибки конфига + контент. */
+/**
+ * Каркас приложения: sidebar + офлайн-баннер + ошибка конфига + контент.
+ * Ни один из слоёв не зависит от успешного чтения конфига — это и есть
+ * грациозная деградация (PRD_CHALLENGE.md §7.3).
+ */
 export function AppShell({
   children,
   sections,
@@ -30,22 +36,11 @@ export function AppShell({
         configPath={configPath}
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        {error === null ? null : (
-          <div
-            role="alert"
-            data-testid="config-error-banner"
-            className="m-4 rounded-bento border border-danger/60 bg-danger/10 px-4 py-3 text-sm text-danger lg:m-6"
-          >
-            <p className="font-semibold">Конфиг orchestrator.json не прочитан</p>
-            <p className="mt-1 font-mono text-xs break-all">{error}</p>
-            <p className="mt-2 text-xs text-danger/80">
-              Подсказка: запускайте Next.js из каталога web/ или задайте переменную окружения
-              ORCHESTRATOR_CONFIG_PATH.
-            </p>
-          </div>
-        )}
+        <OfflineBanner />
+        {error === null ? null : <ConfigError error={error} configPath={configPath} />}
         <main className="mx-auto w-full max-w-[1600px] flex-1 p-4 lg:p-6">{children}</main>
       </div>
     </div>
   );
 }
+

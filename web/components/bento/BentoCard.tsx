@@ -11,11 +11,24 @@ export interface BentoCardProps {
   readonly href?: string;
   readonly testId?: string;
   readonly className?: string;
+  /**
+   * Заблокированная карточка канала: ссылка не рендерится (клик и Tab недоступны),
+   * поверхность и текст уходят в приглушённый серый.
+   */
+  readonly inactive?: boolean;
+  /** Визуальное состояние для e2e-селекторов: `active` | `not_connected`. */
+  readonly state?: string;
 }
 
 /**
  * Базовая bento-карточка. Если передан `href` — превращается в ссылку
  * (клик по карточке канала ведёт в раздел, п.4.1 DISCUSS.md).
+ *
+ * `inactive` — состояние «канал не подключён»: вместо `<Link>` рендерится
+ * `<section aria-disabled="true">`, поэтому переход по клику и Tab невозможен,
+ * hover-подсветка и стрелка «→» убраны, поверхность приглушена. Текст остаётся
+ * на `--color-muted` (5.7:1 на `--color-surface`), чтобы ослабление не роняло
+ * контраст ниже AA.
  */
 export function BentoCard({
   title,
@@ -25,10 +38,18 @@ export function BentoCard({
   href,
   testId,
   className,
+  inactive = false,
+  state,
 }: BentoCardProps): ReactElement {
+  /* У неактивной карточки цель перехода обнуляется — дальше идёт ветка <section>. */
+  const targetHref = inactive ? undefined : href;
+
   const classes = cn(
-    "flex h-full flex-col rounded-bento border border-border bg-surface p-4 shadow-sm",
-    href === undefined
+    "flex h-full flex-col rounded-bento border p-4 shadow-sm",
+    inactive
+      ? "cursor-not-allowed border-border/60 bg-surface/70"
+      : "border-border bg-surface",
+    targetHref === undefined
       ? null
       : "transition-colors hover:border-primary/50 hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
     className,
@@ -45,7 +66,7 @@ export function BentoCard({
             <p className="mt-1 truncate text-xs text-muted/80">{subtitle}</p>
           )}
         </div>
-        {href === undefined ? null : (
+        {targetHref === undefined ? null : (
           <span aria-hidden="true" className="text-xs text-muted">
             →
           </span>
@@ -58,16 +79,23 @@ export function BentoCard({
     </>
   );
 
-  if (href === undefined) {
+  if (targetHref === undefined) {
     return (
-      <section data-testid={testId} className={classes}>
+      <section
+        data-testid={testId}
+        data-card-state={state}
+        data-inactive={inactive ? "true" : undefined}
+        aria-disabled={inactive ? true : undefined}
+        title={inactive && href !== undefined ? "Канал не подключён: переход заблокирован" : undefined}
+        className={classes}
+      >
         {content}
       </section>
     );
   }
 
   return (
-    <Link href={href} data-testid={testId} className={classes}>
+    <Link href={targetHref} data-testid={testId} data-card-state={state} className={classes}>
       {content}
     </Link>
   );

@@ -51,14 +51,22 @@ async function readConfig(configPath: string): Promise<ConfigLoadResult> {
 }
 
 /**
- * Читает и валидирует конфиг один раз за жизнь процесса (в dev-режиме кэш сбрасывается
- * перезапуском/пересборкой модуля).
+ * Читает и валидирует конфиг.
+ *
+ * Успешный результат кэшируется на время жизни процесса, а ошибка — **нет**:
+ * иначе кнопка «Повторить» в `ConfigError` показывала бы тот же старый результат
+ * даже после исправления файла (PRD_CHALLENGE.md §7.5 AC-3).
  */
-export function loadOrchestratorConfig(): Promise<ConfigLoadResult> {
+export async function loadOrchestratorConfig(): Promise<ConfigLoadResult> {
   if (cachedConfig === null) {
     cachedConfig = readConfig(resolveConfigPath());
   }
-  return cachedConfig;
+
+  const result = await cachedConfig;
+  if (!result.ok) {
+    cachedConfig = null;
+  }
+  return result;
 }
 
 /** Сброс кэша — используется тестами и будущим BFF-эндпоинтом (вариант B). */

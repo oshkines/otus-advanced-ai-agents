@@ -28,7 +28,8 @@
 - [x] Развёрнуто локальное Python-окружение: `.venv` на CPython 3.12.14 через `uv`,
       `playwright==1.64.1`, браузеры `chromium-1248` + `chromium-headless-shell`.
 - [x] Добавлен `.gitignore` (`.env`, `.venv/`, `build/`, `*.db`, артефакты Playwright).
-- [x] Документация переведена в GSD-структуру `.planning/`, папка `docs/` выведена из проекта.
+- [x] Документация переведена в GSD-структуру `.planning/`, папка `docs/` выведена из проекта
+      (02.11.2026 возвращена для handoff/research — см. журнал изменений).
 
 - [x] **Шаг 5: Автоматический хук валидации перед коммитом.**
       Создан `pre-commit.bat` в корне проекта (3 проверки: наличие файла, кодировка без кириллицы,
@@ -57,7 +58,7 @@
 - [ ] Изоляция сбоев канала (падение воркера не роняет ядро).
 - [ ] Интеграционный тест с моками API.
 
-## Phase 5 — Bento Dashboard UI (Next.js 15 + Tailwind v4) `IN PROGRESS`
+## Phase 5 — Bento Dashboard UI (Next.js 15 + Tailwind v4) `READY FOR REVIEW`
 
 ### Обсуждение и контракт
 
@@ -84,6 +85,49 @@
 - [ ] `tests/browser_test_dashboard.py` — Playwright Python e2e + скриншот (следующий шаг).
 - [ ] Ветка B: `app/api/dashboard/route.ts` + `httpDashboardSource` + polling (backlog фазы).
 
+### Закрытие замечаний ревью 7/10 (02.11.2026)
+
+- [x] **Документация создана:** `.planning/phases/phase-05-bento-dashboard/PLAN.md` (цель,
+      чек-лист A–D, MoSCoW, 12 рисков с митигацией, exit criteria), `docs/research/BENCHMARKING.md`
+      (ресерч Linear / gethomepage.dev / Vercel + обоснование палитры), `docs/handoff/PRD_CHALLENGE.md`
+      (персоны, 14 User Stories с AC, сценарии деградации, copy deck, трассируемость).
+- [x] **Дизайн-система:** единые токены `design.md` → `web/app/globals.css` → `src/status_panel.html`;
+      slate-палитра и `Consolas` в коде отсутствуют.
+- [x] **UX-состояния:** `ConfigError`, `OfflineBanner`, `RouteError` + `error.tsx`/`global-error.tsx`,
+      `not-found`, `loading`, partial-баннер, blur-валидация, optimistic-действия с шагами.
+- [x] **Карточки каналов при `enabled: false`:** визуальное состояние `not_connected` — серый
+      `--color-muted`, ссылка не рендерится (`<section aria-disabled="true">`, клики и Tab
+      заблокированы), в footer «переход заблокирован». Семантический `StatusBadge` остаётся
+      `disabled` («выключен», `data-status="disabled"`) согласно PRD AC-1.
+- [x] **Фон:** ядро галактики выше кадра (`cy + 0.7·ry = -7.8 px < 0`), горизонт на `120 px`
+      приглушён (пик `#cbd8f4` @ 0.56 вместо белого `@ 1.0`) — верхняя панель не пересвечена.
+- [x] **Проверки 02.11.2026:** `npm run typecheck` → exit 0 · `npm run build` → exit 0 (5 маршрутов) ·
+      `/`, `/email`, `/vacancies`, `/rzhd` → HTTP 200, 0 ошибок консоли · `/nope` → 404 со страницей ·
+      `pre-commit.bat` → exit 0 (3/3) · скриншот `web/public/screenshots/dashboard_desktop.png`
+      переснят с production-сборки (`start:e2e`, 1440×900, dsf=2, reduced-motion, PNG 2880×1800).
+
+### Favicon: иконка вкладки (финальный визуальный штрих, 02.11.2026)
+
+- [x] `web/app/icon.svg` — иконка вкладки: геометрия корабля Trimaxion перенесена 1:1 из
+      `web/components/icons.tsx` (`TrimaxionGlyph`, `viewBox 0 0 24 24`) в самостоятельный SVG
+      32×32 на подложке `--color-canvas` (#0a0e17) с обводкой `--color-primary` (#58a6ff) —
+      тот же силуэт, что в логотипе сайдбара.
+- [x] Next.js 15 file-based metadata: `app/icon.svg` подхвачен автоматически, в HTML отдаётся
+      `<link rel="icon" href="/icon.svg?<hash>" type="image/svg+xml"/>`; собственных
+      `<link rel="icon">` в `web/app/` и `web/components/` нет (поиск → 0 совпадений), конфликтов нет.
+- [x] **Проверки 02.11.2026:** `npm run build` → exit 0, 6 маршрутов (включая `/icon.svg`, static) ·
+      `/icon.svg` → HTTP 200, `image/svg+xml` · `<link rel="icon">` присутствует на `/` ·
+      dev на :3000 возвращён и отвечает 200 (`/icon.svg` → 200) · скриншот
+      `web/public/screenshots/dashboard_desktop.png` переснят с production-сборки
+      (`start:e2e`, 1440×900, dsf=2, reduced-motion, PNG 2880×1800, 678 207 Б).
+
+### Открытые пункты (не блокируют фиксацию, Phase 6)
+
+- [ ] **AC-4 в PRD_CHALLENGE.md:** при недоступном конфиге `app/(dashboard)/page.tsx` делает ранний
+      `return`, поэтому карточки каналов не рендерятся (баннер `config-error-banner` и заглушки
+      в сайдбаре есть). Правка: отрисовать карточки из `DEFAULT_NAVIGATION` со статусом `not_connected`.
+- [ ] `tests/browser_test_dashboard.py` (PLAN D-3) и ручной прогон формы/офлайна (PLAN D-5).
+
 ## Артефакты
 
 | Файл | Назначение |
@@ -98,9 +142,14 @@
 | `.planning/phases/phase-05-bento-dashboard/DISCUSS.md` | Решения обсуждения Phase 5 (вариант A + ответы на 6 вопросов) |
 | `.planning/phases/phase-05-bento-dashboard/DESIGN.md` | Bento-спека: сетка, токены, компонентное дерево, a11y, тестовые якоря |
 | `.planning/phases/phase-05-bento-dashboard/CONTRACT.md` | Контракт UI ↔ `orchestrator.json`: схема, деривация, точки расширения |
+| `.planning/phases/phase-05-bento-dashboard/PLAN.md` | План фазы: цель, чек-лист A–D, MoSCoW, 12 рисков, exit criteria |
+| `docs/research/BENCHMARKING.md` | Ресерч аналогов (Linear, gethomepage.dev, Vercel) и обоснование палитры `#0A0E17` |
+| `docs/handoff/PRD_CHALLENGE.md` | Handoff: персоны, 14 User Stories с AC, сценарии отказов, copy deck, трассируемость |
+| `web/public/screenshots/dashboard_desktop.png` | Скриншот обзора с production-сборки (1440×900, dsf=2, reduced-motion) |
 | `web/` | Next.js App Router дашборд: `/`, `/email`, `/vacancies`, `/rzhd` |
 | `web/lib/orchestrator/` | Загрузчик конфига (`config.ts`), валидация (`schema.ts`), деривация (`derive.ts`), источник (`source.ts`) |
 | `web/app/globals.css` | Tailwind v4 CSS-first: `@import "tailwindcss"` + `@theme`-токены |
+| `web/app/icon.svg` | Favicon: корабль Trimaxion на подложке `--color-canvas` (file-based metadata Next.js 15) |
 
 ## Команды запуска (Windows 11, PowerShell)
 
@@ -129,3 +178,6 @@ Set-Location ..
 | 26.10.2026 | Созданы `.planning/ROADMAP.md`, `.planning/SECURITY.md` |
 | 26.10.2026 | Скриншот e2e перенесён в `.planning/screenshots/`, ссылки в конфиге и тесте обновлены |
 | 26.10.2026 | Папка `docs/` удалена (содержимое полностью мигрировано) |
+| 02.11.2026 | Папка `docs/` возвращена для артефактов фазы: `docs/handoff/PRD_CHALLENGE.md`, `docs/research/BENCHMARKING.md`, `docs/troubleshooting.md` |
+| 02.11.2026 | Phase 5 → `READY FOR REVIEW`: замечания ревью 7/10 закрыты, документация (PLAN, BENCHMARKING, PRD_CHALLENGE) создана, проверки typecheck/build/маршруты/pre-commit/скриншот — зелёные. Открыты AC-4, D-3, D-5 (Phase 6) |
+| 02.11.2026 | Favicon: `web/app/icon.svg` (корабль Trimaxion из логотипа сайдбара) — иконка вкладки через file-based metadata Next.js 15; build, `/icon.svg` и скриншот перепроверены |
