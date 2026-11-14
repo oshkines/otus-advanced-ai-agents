@@ -7,11 +7,34 @@
 - **Контекст-инжиниринг:** В проекте официально развернут и активно используется фреймворк **[GSD-Core (Git. Ship. Done.)](https://github.com/open-gsd/gsd-core)**. Все итерации проектирования бэкенда и UI проходят через регламентированный цикл фаз (Discuss ➔ Plan ➔ Execute ➔ Verify ➔ Ship), локальные правила зафиксированы в `.clinerules/gsd.md`.
 - **Визуальная концепция:** Интерфейс дашборда спроектирован в строгом соответствии со спецификацией **`design.md`** (Bento-Grid макет, цветовая палитра #0A0E17 / #161B22, моноширинный шрифт JetBrains Mono для логов и системный контраст WCAG >= 7:1).
 
-## 💻 Главный экран системы (Bento Overview)
+## 🖼️ Интерфейс и визуальная концепция (Production UI)
 
-![Главный дашборд системы](web/public/screenshots/dashboard_desktop.png)
+Интерфейс собран как рабочая панель инженера, а не маркетинговый лендинг: тёмная canvas-подложка, плотный bento-макет, моноширинные логи и явно показанные состояния. Вся визуальная логика выведена из `design.md`, поэтому на скриншотах ниже — реальные экраны production-сборки, а не макеты.
 
-*Снимок сделан с production-сборки (`npm run build` + `npm run start:e2e`), окно 1440 px, анимации отключены через `prefers-reduced-motion` — поэтому кадр чистый и повторяемый.*
+### 🖥️ Главный рабочий экран (`/`)
+
+![AI Dev Navigator Dashboard](docs/screenshots/dashboard-home.png)
+
+*Bento-обзор: карточки модулей Email / Вакансии / РЖД и системные карточки ядра (Core, Health, Workers, Storage, E2E) на одном экране.*
+
+### 🚀 Публичная обзорная MVP-страница (`/overview`)
+
+![AI Dev Navigator Overview](docs/screenshots/overview-mvp.png)
+
+*Витрина MVP по схеме «оффер → доказательства → модули → путь события → CTA». Живёт вне route group `(dashboard)`, поэтому рендерится без сайдбара и без чтения конфига; собирается статически.*
+
+*Оба снимка сделаны с production-сборки (`npm run build` + `npm run start:e2e`), анимации отключены через `prefers-reduced-motion` — поэтому кадры чистые и повторяемые.*
+
+### 🧱 Фронтенд-стек и дизайн-система
+
+| Слой | Реализация |
+|---|---|
+| Дизайн-система | `design.md` — единственный источник истины + CSS-first токены Tailwind v4 `@theme` в `web/app/globals.css`: палитра `#0A0E17` (canvas) и `#161B22` (surface), семантические радиусы `rounded-bento` / `rounded-control`, токены motion. `tailwind.config.js` не создаётся, hex-литералов в компонентах нет |
+| Типографика | `JetBrains Mono` для логов, кода и метаданных, `Inter` для основного текста (`next/font`, subset `cyrillic`, self-hosted — внешних CDN-запросов нет) |
+| Иконки | единый набор `lucide-react` через `web/components/icons.tsx`: один `strokeWidth` и один размер; бренд-знак Trimaxion хранится отдельно, случайные эмодзи в роли иконок запрещены (`design.md` §10) |
+| Микро-анимации | `motion/react`: появление bento-карточек (сдвиг 14 px, 420 ms, стаггер 40 ms), hover/tap-отклик кнопок (`ui/Pressable`), переходы табов. Глобально — `<MotionConfig reducedMotion="user">` в `web/components/providers/MotionProvider.tsx`: системная настройка «уменьшить движение» сама гасит transform-анимации |
+| Псевдо-3D и фон | `GSAP` (`gsap` + `@gsap/react`), только в клиентских компонентах: автономный космический фон «Горизонт событий» (`web/components/layout/AuroraBackdrop.tsx`), туманность «Столпы Творения», редкая сверхновая, цефеиды и далёкая комета, а также пролёт корабля Trimaxion строго по нити горизонта (`web/components/layout/TrimaxionPassage.tsx`). Анимируются только `transform` / `opacity`, таймлайны «спят» между событиями, при `prefers-reduced-motion` декоративные узлы не монтируются |
+| Роутинг и адаптивность | публичный роут `/overview` для презентации MVP отделён от рабочего дашборда `/`; bento-сетка 3 → 1 колонка, вёрстка проверена до `375px` без горизонтального скролла (`viewport` в `web/app/layout.tsx`) |
 
 ## 📦 Текущий статус реализации (Phase 3 & Phase 5)
 
@@ -29,6 +52,7 @@ ai-dev-orchestrator/
 ├── web/                     # Next.js 15 + Tailwind v4 bento-дашборд (см. web/README.md)
 ├── tests/                   # pytest + Playwright Python (e2e), мок-вебхуки
 ├── design.md                # спецификация UI: палитра, типографика, сетка, состояния
+├── docs/screenshots/        # Production UI: dashboard-home.png (/), overview-mvp.png (/overview)
 ├── docs/handoff/            # PRD_CHALLENGE.md: персоны, User Stories с AC, деградация
 ├── docs/research/           # BENCHMARKING.md: ресерч аналогов и обоснование палитры
 ├── docs/troubleshooting.md  # журнал ошибок и решений: сначала смотрим сюда при любой ошибке
