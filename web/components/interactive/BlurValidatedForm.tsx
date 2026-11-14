@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import type { OptimisticState } from "@/components/interactive/OptimisticAction";
+import { Pressable } from "@/components/ui/Pressable";
 import { cn } from "@/lib/cn";
 import { HOLIDAY_WINDOW } from "@/lib/mock/rzhd";
 
@@ -223,7 +224,7 @@ export function BlurValidatedForm({
       </div>
 
       <div className="mt-1 flex flex-wrap items-center gap-2">
-        <button
+        <Pressable
           type="submit"
           data-testid="passenger-submit"
           disabled={isBusy}
@@ -236,7 +237,7 @@ export function BlurValidatedForm({
           )}
         >
           {isBusy ? "Бронирую…" : status === "error" ? "Повторить" : "Забронировать"}
-        </button>
+        </Pressable>
         <span className="text-[10px] leading-4 text-muted">
           Демо-режим: реальная бронь появится в Phase 6.
         </span>

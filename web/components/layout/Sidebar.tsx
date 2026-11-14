@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactElement } from "react";
 
+import { TrimaxionMark } from "@/components/brand/TrimaxionMark";
 import { Icon } from "@/components/icons";
 import { cn } from "@/lib/cn";
 import { buildSidebarLinks, type SidebarLink } from "@/lib/orchestrator/derive";
@@ -55,7 +56,7 @@ export function Sidebar({
           aria-hidden="true"
           className="grid size-8 shrink-0 place-items-center rounded-control border border-border bg-canvas text-primary"
         >
-          <Icon name="rocket" />
+          <TrimaxionMark size={18} />
         </span>
         <span className="min-w-0">
           <span className="block font-mono text-[11px] leading-4 uppercase tracking-[0.22em] text-muted">

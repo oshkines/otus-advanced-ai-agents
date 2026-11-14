@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useTransition, type ReactElement } from "react";
 
+import { Pressable } from "@/components/ui/Pressable";
 import { cn } from "@/lib/cn";
 
 export interface ReloadButtonProps {
@@ -27,8 +28,7 @@ export function ReloadButton({
   const [isPending, startTransition] = useTransition();
 
   return (
-    <button
-      type="button"
+    <Pressable
       data-testid={testId}
       aria-busy={isPending}
       disabled={isPending}
@@ -46,6 +46,6 @@ export function ReloadButton({
       )}
     >
       {isPending ? "Перечитываю…" : label}
-    </button>
+    </Pressable>
   );
 }

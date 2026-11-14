@@ -4,6 +4,7 @@ import { useState, type ReactElement } from "react";
 
 import { BlurValidatedForm, type PassengerValues } from "@/components/interactive/BlurValidatedForm";
 import { useOptimisticSteps } from "@/components/interactive/OptimisticAction";
+import { Pressable } from "@/components/ui/Pressable";
 import { cn } from "@/lib/cn";
 import { CAR_TYPE_LABEL, type MockTrainOffer } from "@/lib/mock/rzhd";
 
@@ -35,8 +36,7 @@ export function TicketPurchase({ offer }: TicketPurchaseProps): ReactElement {
 
   return (
     <div data-testid={`ticket-${offer.id}`} data-state={state} className="w-full">
-      <button
-        type="button"
+      <Pressable
         data-testid={`ticket-buy-${offer.id}`}
         disabled={soldOut}
         aria-expanded={isOpen}
@@ -54,7 +54,7 @@ export function TicketPurchase({ offer }: TicketPurchaseProps): ReactElement {
           className={cn("size-1.5 rounded-full", soldOut ? "bg-idle" : "bg-success-soft")}
         />
         {soldOut ? "Мест нет" : "Купить билет"}
-      </button>
+      </Pressable>
 
       {isOpen ? (
         <BlurValidatedForm

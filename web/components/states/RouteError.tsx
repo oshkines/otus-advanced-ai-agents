@@ -3,6 +3,8 @@
 import Link from "next/link";
 import type { ReactElement } from "react";
 
+import { Pressable } from "@/components/ui/Pressable";
+
 export interface RouteErrorProps {
   readonly title: string;
   readonly description: string;
@@ -43,14 +45,13 @@ export function RouteError({
       )}
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <button
-          type="button"
+        <Pressable
           onClick={onRetry}
           data-testid={retryTestId}
           className="inline-flex items-center rounded-control border border-primary/50 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:border-primary hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
         >
           Повторить
-        </button>
+        </Pressable>
         <Link
           href="/"
           className="inline-flex items-center rounded-control border border-border bg-canvas px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:border-primary/50 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"

@@ -3,7 +3,17 @@
  * Спецификация: .planning/phases/phase-05-bento-dashboard/CONTRACT.md
  */
 
-export type IconName = "mail" | "briefcase" | "train" | "grid" | "rocket";
+export type IconName =
+  | "mail"
+  | "briefcase"
+  | "train"
+  | "grid"
+  | "rocket"
+  | "bell"
+  | "radar"
+  | "cpu"
+  | "shield"
+  | "sparkles";
 
 export interface CoreConfig {
   readonly name: string;

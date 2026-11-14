@@ -10,6 +10,8 @@ export interface ChannelCardProps {
   readonly section: DashboardNavSection;
   readonly summary: ChannelMockSummary;
   readonly className?: string;
+  /** Позиция в bento-сетке: задаёт задержку появления карточки. */
+  readonly revealIndex?: number;
 }
 
 /**
@@ -24,7 +26,12 @@ export interface ChannelCardProps {
  * статус не подменяется — его по-прежнему показывает StatusBadge
  * (`data-status="disabled"` для `enabled: false`, см. PRD_CHALLENGE.md AC-1).
  */
-export function ChannelCard({ section, summary, className }: ChannelCardProps): ReactElement {
+export function ChannelCard({
+  section,
+  summary,
+  className,
+  revealIndex = 0,
+}: ChannelCardProps): ReactElement {
   const inactive = section.status !== "active";
   const visualState = inactive ? "not_connected" : "active";
 
@@ -46,6 +53,7 @@ export function ChannelCard({ section, summary, className }: ChannelCardProps): 
       inactive={inactive}
       state={visualState}
       testId={`channel-card-${section.id}`}
+      revealIndex={revealIndex}
       className={cn("col-span-12 md:col-span-6 lg:col-span-4", className)}
       footer={footerParts.join(" · ")}
     >

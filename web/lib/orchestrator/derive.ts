@@ -40,7 +40,18 @@ export const DEFAULT_NAVIGATION: readonly NavItemConfig[] = [
   },
 ];
 
-const KNOWN_ICONS: readonly IconName[] = ["mail", "briefcase", "train", "grid", "rocket"];
+const KNOWN_ICONS: readonly IconName[] = [
+  "mail",
+  "briefcase",
+  "train",
+  "grid",
+  "rocket",
+  "bell",
+  "radar",
+  "cpu",
+  "shield",
+  "sparkles",
+];
 
 export function normalizeIcon(raw: string): IconName {
   return (KNOWN_ICONS as readonly string[]).includes(raw) ? (raw as IconName) : "grid";

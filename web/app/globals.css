@@ -3,7 +3,12 @@
 /*
  * Дизайн-токены (Tailwind v4, CSS-first).
  * Источник истины: design.md в корне проекта, разделы 2 (Colors), 3 (Typography),
- * 4 (Spacing & Grid), 8 (Motion). tailwind.config.js не создаётся.
+ * 4 (Spacing & Grid), 5 (Components), 8 (Motion). tailwind.config.js не создаётся.
+ *
+ * Правило проекта: в компонентах нет hex-литералов и «магических» радиусов —
+ * только семантические утилиты, порождённые этими токенами (bg-surface, rounded-bento,
+ * text-muted, font-mono). Шкала совпадает с дефолтной шкалой Tailwind v4:
+ * --radius-control = rounded-lg (8px), --radius-bento = rounded-xl (12px).
  */
 @theme {
   /* Палитра design.md */
@@ -29,15 +34,19 @@
   --color-ok: #3fb950;
   --color-warn: #d29922;
 
-  /* Радиусы: 6px — кнопки и пункты меню, 12px — bento-карточки (design.md §4) */
-  --radius-bento: 0.75rem;
-  --radius-control: 0.375rem;
-
-  /* Типографика design.md §3: Inter для текста, JetBrains Mono для кода и логов */
-  --font-sans: "Inter", "Segoe UI", Tahoma, system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Mono", ui-monospace, monospace;
+  /* Радиусы design.md §4: Bento-карточка остаётся строгой (12px),
+     интерактив получает более современное скругление (8px). */
+  --radius-bento: 0.75rem; /* 12px = rounded-xl — карточки и панели */
+  --radius-bento-inner: 0.5rem; /* 8px = rounded-lg — вложенные поверхности */
+  --radius-control: 0.5rem; /* 8px = rounded-lg — кнопки, поля, пункты меню */
+  --radius-control-sm: 0.375rem; /* 6px = rounded-md — плотные бейджи */
+  --radius-pill: 9999px; /* статус-бейджи и чипы */
 
   /* Motion design.md §8: 200ms cubic-bezier(0.4, 0, 0.2, 1) */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-emphasis: cubic-bezier(0.22, 0.68, 0.16, 1);
+  --duration-quick: 200ms;
+  --duration-reveal: 420ms;
   --default-transition-duration: 200ms;
   --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 
@@ -46,6 +55,20 @@
   --animate-aurora-b: aurora-sway-b 33s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   --animate-aurora-c: aurora-sway-c 28s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   --animate-aurora-d: aurora-shimmer 26s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/*
+ * Типографика design.md §3: шрифты грузятся через next/font (layout.tsx) с
+ * обязательным subset `cyrillic` — без него кириллица падает в системный fallback
+ * и ломает моноширинный ритм логов. `var(--font-*, <fallback>)` держит
+ * объявление валидным, даже если next/font недоступен (офлайн-сборка).
+ */
+@theme {
+  --font-sans:
+    var(--font-inter, "Inter"), "Segoe UI", Tahoma, system-ui, -apple-system, sans-serif;
+  --font-mono:
+    var(--font-jetbrains-mono, "JetBrains Mono"), "SF Mono", "Cascadia Mono", ui-monospace,
+    monospace;
 }
 
 @layer base {
@@ -86,8 +109,12 @@
    * Космический фон: эллиптический галактический шлейф + северное сияние.
    *
    * Контраст (WCAG >= 7:1) держится геометрией слоёв, а не «на глаз»:
-   * фон живёт в отдельном контексте z-index: 0, контент AppShell поднят на
-   * z-index: 10 и лежит на непрозрачных --color-canvas / --color-surface.
+   * фон живёт на уровне canvas (`z-index: -1`), контент AppShell поднят на
+   * `z-index: 10` и лежит на непрозрачных --color-canvas / --color-surface.
+   * Отрицательный z-index — единственный способ гарантировать, что фон
+   * останется ПОД любым контентом, включая карточки без собственного
+   * `position`/`z-index` (страница `/overview` рендерится без AppShell):
+   * пасхалка-корабль не может «пролететь поверх» текста Bento-карточек.
    * Заливки фона низкоальфные (<= 0.56), прозрачность слоя ограничена 0.72,
    * маска гасит фон вниз экрана: светимость под текстом остаётся низкой,
    * поэтому --color-ink (#c9d1d9) сохраняет контраст выше 7:1, а карточки,
@@ -98,7 +125,7 @@
     top: 0;
     right: 0;
     left: 0;
-    z-index: 0;
+    z-index: -1;
     height: 34rem;
     overflow: hidden;
     pointer-events: none;
@@ -128,11 +155,18 @@
    * остаётся между шапкой и bento-сеткой. По ширине SVG растягивается
    * (preserveAspectRatio="none"), а горизонтальное затухание к краям задаёт
    * маска внутри viewBox — резких обрывов на границе экрана нет.
+   *
+   * Слои внутри `.aurora-backdrop` (снизу вверх): ленты сияния — `z-index: 0`,
+   * дуги горизонта и звёздное поле с маской `galaxy-edge-fade` — `z-index: 2`,
+   * корабль — `z-index: 4` (см. `.trimaxion-scene`). Контент AppShell живёт вне
+   * фона на `z-index: 10`, поэтому ни одна часть пасхалки не может перекрыть
+   * Bento-карточки и их текст.
    */
   .galaxy-cluster {
     position: absolute;
     top: 0;
     left: 0;
+    z-index: 2;
     display: block;
     width: 100%;
     height: 27.5rem;
@@ -141,6 +175,7 @@
   /* Лента сияния: плавный градиент + блюр + вертикальная маска «занавеса» */
   .aurora-ribbon {
     position: absolute;
+    z-index: 0;
     display: block;
     border-radius: 50%;
     filter: blur(22px);
@@ -230,6 +265,7 @@
   /* Тонкая структура лучей: делает сияние очерченным, а не «пятном» */
   .aurora-rays {
     position: absolute;
+    z-index: 0;
     top: -8rem;
     left: 50%;
     width: min(76rem, 140vw);
@@ -304,6 +340,275 @@
   68% {
     opacity: 0.52;
     transform: translate3d(2%, -1%, 0) scale(1.02);
+  }
+}
+
+@layer components {
+  /*
+   * Пасхалка «Корабль Trimaxion в глубине» (design.md §8).
+   *
+   * Слой монтируется только на desktop и только без `prefers-reduced-motion`
+   * (см. components/layout/TrimaxionPassage.tsx). Здесь — только статика:
+   * перспектива, 3D-контекст корпуса и «дымка» металла. Всё движение задаёт GSAP,
+   * поэтому CSS не нагружает компоновку постоянными анимациями.
+   *
+   * Иерархия трансформов разделена по слоям, чтобы курс не спорил с ракурсом:
+   * `.trimaxion-anchor` — позиция на траектории, `.trimaxion-orient` — курс
+   * (нос строго по вектору скорости), `.trimaxion-ship` — масштаб, прозрачность
+   * и лёгкий тангаж (`rotateX`). Разворота `rotateY` к камере нет: корабль
+   * держит строгий боковой профиль, поэтому компактная спарка двигателей и её
+   * параллельные шлейфы читаются как на чертеже.
+   *
+   * Слой корабля — часть фона: `.aurora-backdrop` опущен на `z-index: -1`,
+   * поэтому корпус физически не может оказаться поверх контента. Внутри сцены
+   * `z-index: 4` поднимает корабль строго НАД дугами горизонта и звёздным полем
+   * (`z-index: 2`), но строго ПОД контентом AppShell (`z-index: 10`): при
+   * пересечении линии горизонта корпус перекрывает светящуюся нить собою,
+   * а Bento-карточки и их текст остаются поверх корпуса.
+   * `overflow` намеренно НЕ скрыт: инверсионный шлейф должен выходить за габарит
+   * корпуса, иначе контейнер обрезал бы хвост.
+   */
+  .trimaxion-scene {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    perspective: 1000px;
+    perspective-origin: 50% 22%;
+    pointer-events: none;
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0%,
+      rgb(0 0 0 / 0.35) 2.5%,
+      rgb(0 0 0 / 0.8) 5%,
+      #000 9%,
+      #000 91%,
+      rgb(0 0 0 / 0.8) 95%,
+      rgb(0 0 0 / 0.35) 97.5%,
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent 0%,
+      rgb(0 0 0 / 0.35) 2.5%,
+      rgb(0 0 0 / 0.8) 5%,
+      #000 9%,
+      #000 91%,
+      rgb(0 0 0 / 0.8) 95%,
+      rgb(0 0 0 / 0.35) 97.5%,
+      transparent 100%
+    );
+  }
+
+  /* Курс: точка-якорь нулевого размера, вокруг неё вращается весь корабль */
+  .trimaxion-orient {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    transform-origin: 0 0;
+    transform-style: preserve-3d;
+    will-change: transform;
+  }
+
+  .trimaxion-anchor {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    transform-style: preserve-3d;
+    will-change: transform;
+  }
+
+  /*
+   * Корпус: глубокая матовая платина. Переменные задаёт GSAP прямо на этом
+   * элементе: `--trimaxion-sheen` — яркость сатинового перелива,
+   * `--trimaxion-core` — ядро блика, `--trimaxion-plasma` — яркость плазмы в
+   * соплах, `--trimaxion-glint-x` — сдвиг световой полосы по корпусу
+   * (металл «играет» в движении).
+   */
+  .trimaxion-ship {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 320px;
+    height: 128px;
+    opacity: 0;
+    --trimaxion-sheen: 0.55;
+    --trimaxion-core: 0;
+    --trimaxion-plasma: 0;
+    --trimaxion-glint-x: 0px;
+    transform-style: preserve-3d;
+    will-change: transform, opacity;
+  }
+
+  /*
+   * Корпус без размытия: силуэт должен читаться как цельный металл, а не как
+   * мягкое пятно. Лёгкая десатурация держит благородный сатин и не даёт
+   * платине уйти в «кислотный» холод.
+   */
+  .trimaxion-hull {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    filter: saturate(0.92);
+  }
+
+  /*
+   * Перелив по корпусу: полоса обрезана clipPath, двигается по горизонтали.
+   * `soft-light` вместо `screen` — блик мягко подсвечивает платину, но не
+   * выбеливает её до зеркального пятна.
+   */
+  .trimaxion-glint {
+    opacity: var(--trimaxion-sheen, 0.55);
+    transform: translateX(var(--trimaxion-glint-x, 0px));
+    mix-blend-mode: soft-light;
+    pointer-events: none;
+  }
+
+  /* Ядро блика: «перетёкшая» в корпус звезда; режим мягкий, без пересвета */
+  .trimaxion-core {
+    opacity: var(--trimaxion-core, 0);
+    mix-blend-mode: soft-light;
+    pointer-events: none;
+  }
+
+  /*
+   * Двойной инверсионный шлейф: две плотные тёплые полосы, каждая строго от
+   * своего сопла. Двигатели стоят спаркой БОК О БОК в 3/4: дальнее сопло чуть
+   * выше продольной оси и ближе к носу, ближнее — чуть ниже и у самой кормы,
+   * поэтому полосы идут рядом (≈ 8–10 px друг от друга на крейсерском
+   * масштабе), но не сливаются в одну струю. Дальний двигатель приглушён, его
+   * след чуть короче и бледнее. Полосы живут в слое курса
+   * (`.trimaxion-orient`), а не в масштабируемой группе корпуса, поэтому их
+   * толщина и длина остаются в экранных пикселях. GSAP каждый кадр переставляет
+   * точку выхода к соплам (`NOZZLE_FAR_*_PX` / `NOZZLE_NEAR_*_PX` × scale) и
+   * задаёт `scaleX`, `scaleY` и `opacity`; базовая полоса 240 px при
+   * `scaleX` 0.3–1.08 даёт 72–259 px видимой длины — на крейсерском масштабе
+   * шлейф тянется заметно дальше корпуса и читается в каждом кадре пролёта.
+   * `overflow` у `.trimaxion-scene` намеренно не скрыт: хвост выходит за
+   * габарит корпуса.
+   */
+  .trimaxion-trail {
+    position: absolute;
+    top: -1.5px;
+    left: 0;
+    width: 240px;
+    height: 3px;
+    border-radius: 9999px;
+    transform-origin: 0 50%;
+    opacity: 0;
+    background: linear-gradient(
+      90deg,
+      rgba(249, 115, 22, 0.85) 0%,
+      rgba(250, 204, 21, 0.55) 26%,
+      rgba(148, 163, 184, 0.22) 66%,
+      rgba(148, 163, 184, 0) 100%
+    );
+    filter: blur(1px);
+    will-change: opacity, transform;
+  }
+
+  /*
+   * Далёкая звезда: белое ядро на якоре траектории. GSAP полностью гасит её к
+   * масштабу 0.1, когда корпус уже проявился, поэтому белое пятно не висит
+   * «поверх» металла. Окна проявления перекрываются (кроссфейд в
+   * `TrimaxionPassage`: `HULL_FADE_IN_SCALE` < `STAR_CUTOFF_SCALE`), поэтому
+   * подмена слоёв идёт единым плавным нарастанием без видимого щелчка.
+   */
+  .trimaxion-star {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 5px;
+    height: 5px;
+    border-radius: 9999px;
+    opacity: 0;
+    background: radial-gradient(
+      circle,
+      #ffffff 0%,
+      #e0f2fe 42%,
+      rgba(186, 230, 253, 0.35) 68%,
+      rgba(186, 230, 253, 0) 100%
+    );
+    box-shadow:
+      0 0 10px 2px rgba(186, 230, 253, 0.45),
+      0 0 3px 1px rgba(255, 255, 255, 0.7);
+    pointer-events: none;
+    will-change: opacity, transform;
+  }
+
+  /*
+   * Плазма в соплах: яркость приходит из `--trimaxion-plasma` (GSAP).
+   * Никакого `screen` — он выбеливал огонь до белого; обычный режим наложения
+   * сохраняет насыщенный тепловой градиент красный → оранжевый → золотистый.
+   */
+  .trimaxion-plasma {
+    opacity: var(--trimaxion-plasma, 0);
+    mix-blend-mode: normal;
+    pointer-events: none;
+  }
+
+  /*
+   * Живой космос: звёзды-пульсары, далёкая комета и редкая сверхновая.
+   * Движение (периоды, траектории, вспышки) задаёт GSAP в AuroraBackdrop и
+   * только внутри `prefers-reduced-motion: no-preference`. Здесь — статика:
+   * исходная прозрачность и профили свечения, поэтому без JS и при
+   * reduced-motion небо остаётся спокойным снимком, а не пустым экраном.
+   */
+  .cosmos-pulsar,
+  .cosmos-comet,
+  .cosmos-supernova {
+    pointer-events: none;
+  }
+
+  /* Комета и сверхновая рождаются «из ничего»: до первого события их нет */
+  .cosmos-comet,
+  .cosmos-supernova {
+    opacity: 0;
+  }
+
+  /*
+   * Живой импульс горизонта: усиление свечения центрального сегмента ближней
+   * дуги и бегущая по нему точка-искра. В статике оба слоя невидимы — их
+   * включает GSAP (`startHorizonPulse` в AuroraBackdrop), поэтому без JS и при
+   * `prefers-reduced-motion` горизонт остаётся спокойным, как и раньше.
+   */
+  .cosmos-horizon-pulse,
+  .cosmos-horizon-spark {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* Хвост кометы мягко растворяется: гасим сам овал, яркость даёт градиент */
+  .cosmos-comet__tail {
+    opacity: 0.6;
+  }
+
+  /*
+   * Дыхание туманности: два контр-слоя. GSAP качает их прозрачность в
+   * противофазе в диапазоне 0.15 ↔ 0.45 (цикл ~20 s) и мягко дрейфует всё
+   * облако на 18 px, поэтому перелив уходит то в ледяной, то в фиолетовый тон —
+   * интенсивность свечения горизонта «дышит» сама, без движений мыши.
+   */
+  .cosmos-nebula__ice {
+    opacity: 0.45;
+  }
+
+  .cosmos-nebula__violet {
+    opacity: 0.15;
+  }
+
+  /* Дальний план «Столпы Творения»: миниатюра не перехватывает события */
+  .cosmos-pillars {
+    pointer-events: none;
+  }
+
+  /* Искры сверхновой появляются только в момент вспышки */
+  .cosmos-supernova__spark {
+    opacity: 0;
   }
 }
 

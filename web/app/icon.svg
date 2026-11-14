@@ -1,27 +1,49 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none">
   <!--
     Favicon: Trimaxion Drone Ship (Max) из «Полёта навигатора».
-    Геометрия 1:1 перенесена из web/components/icons.tsx (TrimaxionGlyph, viewBox 0 0 24 24)
-    и отцентрована в 32x32. Подложка: canvas #0a0e17, обводка: primary #58a6ff.
-    Next.js 15 подхватывает файл как file-based metadata и сам добавляет link rel="icon".
+    Тот же силуэт, что и в web/components/brand/TrimaxionShip.tsx: гладкое
+    симметричное веретено с острым носом слева, без боковых плавников и
+    раздвоенного хвоста. Материал — хром: графит -> серебро #E2E8F0 с ледяным
+    акцентом #38BDF8 на оси и в дюзе. Заливка (а не обводка) обязательна:
+    на 16x16 px контурный рисунок читался как «глобус», а не как корабль.
+    Next.js 15 подхватывает файл как file-based metadata (link rel="icon"),
+    явная запись дублируется в metadata.icons (web/app/layout.tsx).
   -->
+  <defs>
+    <linearGradient id="favicon-chrome" x1="0" y1="0.85" x2="0.6" y2="0">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="42%" stop-color="#64748B"/>
+      <stop offset="78%" stop-color="#CBD5E1"/>
+      <stop offset="100%" stop-color="#E2E8F0"/>
+    </linearGradient>
+    <linearGradient id="favicon-ice" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#E2E8F0" stop-opacity="0"/>
+      <stop offset="55%" stop-color="#BAE6FD" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0.35"/>
+    </linearGradient>
+    <radialGradient id="favicon-glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Подложка: canvas #0a0e17 и мягкое ледяное свечение за кормой -->
   <rect width="32" height="32" rx="7" fill="#0a0e17"/>
-  <g
-    transform="translate(16 16) scale(1.2) translate(-12.2 -12)"
-    fill="none"
-    stroke="#58a6ff"
-    stroke-width="1.7"
-    stroke-linecap="round"
+  <ellipse cx="23" cy="16" rx="11" ry="8" fill="url(#favicon-glow)"/>
+
+  <!-- Корпус-веретено: остриё слева, симметричная дюза справа -->
+  <path
+    d="M2 16 C5 12 10 10 16 10 C22 10 26 12 27.5 14 L28.5 14.8 L28.5 17.2 L27.5 18 C26 20 22 22 16 22 C10 22 5 20 2 16 Z"
+    fill="url(#favicon-chrome)"
+    stroke="#0F172A"
+    stroke-opacity="0.55"
+    stroke-width="0.6"
     stroke-linejoin="round"
-  >
-    <!-- Корпус-капля: остриё слева, скруглённая корма справа -->
-    <path d="M2.6 12C6.6 9.4 10.6 7.8 14 7.8c2.6 0 4.6 1.6 5.2 3.6v1.2c-.6 2-2.6 3.6-5.2 3.6-3.4 0-7.4-1.6-11.4-4.2Z"/>
-    <!-- Купол кабины на верхней кромке -->
-    <path d="M7.6 8.9c.6-2 3.2-2.3 4.4-.7"/>
-    <!-- Дюза на корме -->
-    <path d="M17.4 10.8v2.4"/>
-    <!-- Раздвоенный хвост-стабилизатор -->
-    <path d="M16.8 8.6 21.8 5.8 18.6 10.4Z"/>
-    <path d="M16.8 15.4 21.8 18.2 18.6 13.6Z"/>
-  </g>
+  />
+
+  <!-- Позвоночная грань: светящаяся ось движения -->
+  <path d="M4 16 L27 16" stroke="url(#favicon-ice)" stroke-width="0.9" stroke-linecap="round"/>
+
+  <!-- Дюза: раскалённая точка на корме -->
+  <ellipse cx="29" cy="16" rx="1.7" ry="1.2" fill="#38BDF8" fill-opacity="0.9"/>
 </svg>

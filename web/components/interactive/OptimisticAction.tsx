@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 
+import { Pressable } from "@/components/ui/Pressable";
 import { cn } from "@/lib/cn";
 
 export type OptimisticState = "idle" | "pending" | "success" | "error";
@@ -159,8 +160,7 @@ export function OptimisticAction({
       data-state={state}
       className={cn("flex min-w-0 flex-col items-start gap-1.5", className)}
     >
-      <button
-        type="button"
+      <Pressable
         onClick={run}
         disabled={disabled || isPending}
         aria-busy={isPending}
@@ -177,7 +177,7 @@ export function OptimisticAction({
           className={cn("size-1.5 rounded-full bg-current", isPending && "animate-pulse")}
         />
         {buttonLabel}
-      </button>
+      </Pressable>
 
       {isPending && visibleSteps.length > 0 ? (
         <ol

@@ -55,11 +55,12 @@ export default async function OverviewPage(): Promise<ReactElement> {
       <SectionTitle hint="3 столбца на desktop · 1 на mobile">Модули</SectionTitle>
       <BentoGrid>
         {snapshot.nav.length > 0 ? (
-          snapshot.nav.map((section) => (
+          snapshot.nav.map((section, index) => (
             <ChannelCard
               key={section.id}
               section={section}
               summary={mockSummaryFor(section.id)}
+              revealIndex={index}
             />
           ))
         ) : (
