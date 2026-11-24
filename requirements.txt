@@ -13,3 +13,20 @@ requests>=2.32,<3
 aioimaplib>=2.0,<3
 httpx>=0.27,<1
 openai>=1.50,<4
+
+# Backend/DB слой (ДЗ по PostgreSQL):
+#   asyncpg       - пул соединений и SQL для mail_accounts/mail_folders/emails/
+#                   valuable_spam (RLS-роль navigator_worker);
+#   pydantic v2   - строгая схема ответа классификатора (structured output:
+#                   category/summary/spam_tag/spam_url);
+#   python-dotenv - загрузка DATABASE_URL и ENV_* из .env при старте воркера.
+asyncpg>=0.29,<1
+pydantic>=2.6,<3
+python-dotenv>=1.0,<2
+
+# Backend API (ДЗ по FastAPI): api/main.py, контракт - docs/api_spec.md.
+#   fastapi       - ASGI-приложение, Pydantic-схемы запросов/ответов, OpenAPI;
+#   uvicorn       - ASGI-сервер на порту 8000 (--host 127.0.0.1);
+#   httpx         - уже выше: клиент для tests/test_api_tdd.py (ASGITransport).
+fastapi>=0.115,<1
+uvicorn[standard]>=0.32,<1

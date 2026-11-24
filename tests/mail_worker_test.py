@@ -18,11 +18,13 @@ import contextlib
 import io
 import json
 import os
+import re
 import sys
 import tempfile
 from collections import namedtuple
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "agents"))
@@ -33,12 +35,15 @@ Response = namedtuple("Response", "result lines")
 
 SECRET_PASSWORD: str = "unit-test-password"
 SECRET_API_KEY: str = "unit-test-deepseek-key"
+TEST_DSN: str = "postgresql://navigator_worker:unit-test-dsn@127.0.0.1:5432/ai_dev_orchestrator"
 ENV_KEYS: tuple[str, ...] = (
     "ENV_DEEPSEEK_API_KEY",
     "ENV_MAIL_PRIMARY_USERNAME",
     "ENV_MAIL_PRIMARY_PASSWORD",
     "ENV_MAIL_SECONDARY_USERNAME",
     "ENV_MAIL_SECONDARY_PASSWORD",
+    "ENV_DATABASE_URL",
+    "DATABASE_URL",
 )
 
 checks: int = 0
@@ -154,6 +159,7 @@ class FakeImap:
         fail_login_times: int = 0,
         fail_hello_times: int = 0,
         select_result: str = "OK",
+        folders: Sequence[bytes] | None = None,
     ) -> None:
         self.messages = messages
         self.calls: list[tuple[str, tuple[Any, ...]]] = []
@@ -161,6 +167,7 @@ class FakeImap:
         self.fail_login_times = fail_login_times
         self.fail_hello_times = fail_hello_times
         self.select_result = select_result
+        self.folders = list(folders or [])
         self.logged_out = False
         self._state = "NONAUTH"
 
@@ -188,6 +195,10 @@ class FakeImap:
         self.calls.append(("search", tuple(criteria)))
         return Response("OK", [" ".join(self.messages).encode("ascii")])
 
+    async def list(self, reference_name: str, mailbox_pattern: str) -> Response:
+        self.calls.append(("list", (reference_name, mailbox_pattern)))
+        return Response("OK", list(self.folders))
+
     async def fetch(self, seq: str, part: str) -> Response:
         self.calls.append(("fetch", (seq, part)))
         message = self.messages.get(seq, {})
@@ -202,7 +213,8 @@ class FakeImap:
 
     async def store(self, seq: str, *args: str) -> Response:
         self.calls.append(("store", (seq, *args)))
-        self.seen.append(seq)
+        if any("Seen" in arg for arg in args):
+            self.seen.append(seq)
         return Response("OK", [b"stored"])
 
     async def logout(self) -> Response:
@@ -239,6 +251,149 @@ class FakeNotifier:
 
 
 _UNSET: Any = object()
+
+
+class FakeGateway:
+    """Двойник :class:`mw.DatabaseGateway`: пишет вызовы в память, без PostgreSQL."""
+
+    def __init__(
+        self,
+        accounts: Sequence[mw.MailAccount] = (),
+        overrides: Mapping[str, Any] | None = None,
+        *,
+        fail: bool = False,
+    ) -> None:
+        self.accounts = list(accounts)
+        self.overrides = dict(overrides or {})
+        self.fail = fail
+        self.folders: list[tuple[int, list[mw.FolderInfo]]] = []
+        self.emails: list[mw.EmailRecord] = []
+        self.valuable: list[tuple[int, mw.EmailRecord]] = []
+        self.deleted: list[int] = []
+        self.touched: list[tuple[int, str | None]] = []
+        self._next_id = 1
+
+    async def fetch_active_accounts(self) -> list[mw.MailAccount]:
+        return list(self.accounts)
+
+    async def fetch_ai_overrides(self) -> Mapping[str, Any]:
+        return dict(self.overrides)
+
+    async def save_folders(self, account_id: int, folders: Sequence[mw.FolderInfo]) -> int:
+        if self.fail:
+            raise RuntimeError("database is down")
+        self.folders.append((account_id, list(folders)))
+        return len(folders)
+
+    async def upsert_email(self, record: mw.EmailRecord) -> int | None:
+        if self.fail:
+            raise RuntimeError("database is down")
+        self.emails.append(record)
+        email_id = self._next_id
+        self._next_id += 1
+        return email_id
+
+    async def save_valuable_spam(self, email_id: int, record: mw.EmailRecord) -> bool:
+        if self.fail:
+            raise RuntimeError("database is down")
+        self.valuable.append((email_id, record))
+        return True
+
+    async def mark_email_deleted(self, email_id: int) -> None:
+        self.deleted.append(email_id)
+
+    async def touch_account(self, account_id: int, *, error: str | None = None) -> None:
+        self.touched.append((account_id, error))
+
+
+class FakePool:
+    """Мини-двойник пула ``asyncpg``: только методы, которые использует gateway."""
+
+    def __init__(
+        self,
+        rows: Sequence[Mapping[str, Any]] | None = None,
+        *,
+        ai_rows: Sequence[Mapping[str, Any]] | None = None,
+        email_id: int = 11,
+        spam_id: int = 21,
+    ) -> None:
+        self.rows = list(rows or [])
+        self.ai_rows = list(ai_rows or [])
+        self.queries: list[tuple[str, tuple[Any, ...]]] = []
+        self.executed: list[tuple[str, tuple[Any, ...]]] = []
+        self.email_id = email_id
+        self.spam_id = spam_id
+
+    async def fetch(self, query: str, *args: Any) -> list[Mapping[str, Any]]:
+        self.queries.append((query, args))
+        if "ai_instructions" in query:
+            return list(self.ai_rows)
+        return list(self.rows)
+
+    async def fetchrow(self, query: str, *args: Any) -> Mapping[str, Any]:
+        self.queries.append((query, args))
+        if "valuable_spam" in query:
+            return {"id": self.spam_id}
+        return {"id": self.email_id}
+
+    async def executemany(self, query: str, payload: Sequence[Any]) -> None:
+        self.queries.append((query, tuple(payload)))
+
+    async def execute(self, query: str, *args: Any) -> None:
+        self.executed.append((query, args))
+
+
+class FakeCompletions:
+    """Двойник ``client.chat.completions``: отдаёт заранее заданные ответы/ошибки."""
+
+    def __init__(self, responses: Sequence[Any]) -> None:
+        self._responses = list(responses)
+        self.calls: list[dict[str, Any]] = []
+
+    async def create(self, **kwargs: Any) -> Any:
+        self.calls.append(dict(kwargs))
+        item = self._responses.pop(0) if self._responses else RuntimeError("no responses left")
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+
+class FakeAIClient:
+    """Минимальный OpenAI-совместимый клиент для проверки retry/fallback."""
+
+    def __init__(self, responses: Sequence[Any]) -> None:
+        self.completions = FakeCompletions(responses)
+        self.chat = type("Chat", (), {"completions": self.completions})()
+
+
+def completion(content: str) -> dict[str, Any]:
+    """Ответ модели в форме OpenAI chat completion."""
+    return {"choices": [{"message": {"content": content}}]}
+
+
+def make_account(
+    account_id: int = 7,
+    email: str = "oshkines@mail.ru",
+    **overrides: Any,
+) -> mw.MailAccount:
+    """Аккаунт из ``mail_accounts`` для тестов (пароль берётся из окружения)."""
+    base: dict[str, Any] = {
+        "id": account_id,
+        "email": email,
+        "imap_host": "imap.mail.ru",
+        "imap_port": 993,
+        "use_ssl": True,
+        "mailbox": "INBOX",
+        "env_password_key": "ENV_MAIL_PRIMARY_PASSWORD",
+        "username_env_key": "ENV_MAIL_PRIMARY_USERNAME",
+        "poll_interval_sec": 5.0,
+        "max_messages_per_poll": 10,
+        "label": "Main",
+        "is_active": True,
+    }
+    base.update(overrides)
+    return mw.MailAccount(**base)
+
 
 
 def make_provider(**overrides: Any) -> mw.ProviderSettings:
@@ -294,6 +449,7 @@ def make_worker(
     classifier: Callable[..., Any] | None = None,
     summarizer: Callable[..., Any] | None = None,
     ai_client: Any = _UNSET,
+    gateway: Any = None,
     once: bool = True,
 ) -> mw.MailboxWorker:
     """Собирает воркер с внедрёнными фейками (сеть не используется)."""
@@ -306,6 +462,7 @@ def make_worker(
         imap_factory=lambda provider: imap,
         classifier=classifier,
         summarizer=summarizer,
+        gateway=gateway,
         once=once,
         sleeper=_instant_sleep,
     )
@@ -399,34 +556,104 @@ def test_text_helpers() -> None:
     check("truncate: word boundary", mw.truncate_text("alpha beta gamma delta", 16) == "alpha beta…")
     check("truncate: zero limit", mw.truncate_text("text", 0) == "")
 
+    check("imap utf7: ascii untouched", mw.decode_imap_utf7("INBOX") == "INBOX")
+    check(
+        "imap utf7: cyrillic decoded",
+        mw.decode_imap_utf7("&BB4EQgQ,BEAEMAQyBDsENQQ9BD0ESwQ1-") == "Отправленные",
+        mw.decode_imap_utf7("&BB4EQgQ,BEAEMAQyBDsENQQ9BD0ESwQ1-"),
+    )
+    check("imap utf7: ampersand escape", mw.decode_imap_utf7("A&-B") == "A&B")
+
+    folder = mw.parse_list_line(b'(\\HasNoChildren) "/" "INBOX"')
+    check("list: parsed", folder is not None and folder.name == "INBOX")
+    check("list: delimiter", folder is not None and folder.delimiter == "/")
+    check("list: selectable", folder is not None and folder.is_selectable)
+    malformed = mw.parse_list_line(b"* OK server ready")
+    check("list: malformed ignored", malformed is None)
+    cyrillic_folder = mw.parse_list_line(
+        '(\\HasNoChildren) "/" "&BB4EQgQ,BEAEMAQyBDsENQQ9BD0ESwQ1-"'
+    )
+    check(
+        "list: cyrillic folder",
+        cyrillic_folder is not None and cyrillic_folder.name == "Отправленные",
+    )
+    check(
+        "list: raw name kept",
+        cyrillic_folder is not None and cyrillic_folder.raw_name.startswith("&BB4"),
+    )
+
+    check("dsn: mask hides password", mw.mask_dsn(TEST_DSN) == "postgresql://navigator_worker:***@127.0.0.1:5432/ai_dev_orchestrator")
+    check("dsn: empty", mw.mask_dsn("") == "")
+    check("dsn: no scheme", mw.mask_dsn("not-a-dsn") == "***")
+
 def test_classification_parsing() -> None:
-    """Строгий JSON классификатора: обёртки, регистр, нарушения контракта."""
-    plain = mw.parse_classification('{"category": "CRITICAL", "priority": "HIGH", "reason": "from CTO"}')
+    """Строгая Pydantic-схема классификатора: поля, обёртки, нарушения контракта."""
+    plain = mw.parse_classification(
+        '{"category": "CRITICAL", "summary": "from CTO", "spam_tag": null, "spam_url": null}'
+    )
     check("classify: plain json", plain.category == "CRITICAL" and plain.priority == "HIGH")
-    check("classify: reason kept", plain.reason == "from CTO")
+    check("classify: summary kept", plain.summary == "from CTO" and plain.reason == "from CTO")
     check("classify: is_critical", plain.is_critical and not plain.is_low)
 
-    fenced = mw.parse_classification('```json\n{"category":"SPAM","priority":"LOW","reason":"ads"}\n```')
+    fenced = mw.parse_classification('```json\n{"category":"SPAM","summary":"ads"}\n```')
     check("classify: fenced json", fenced.category == "SPAM" and fenced.is_low)
 
-    noisy = mw.parse_classification('Sure! {"category":"vacancy","priority":"high","reason":"hr"} done')
+    noisy = mw.parse_classification('Sure! {"category":"vacancy","summary":"hr offer"} done')
     check("classify: noise around json", noisy.category == "VACANCY" and noisy.priority == "HIGH")
 
-    hyphen = mw.parse_classification('{"category":"SPAM-VALUABLE","priority":"HIGH"}')
-    check("classify: hyphenated category", hyphen.category == "SPAM_VALUABLE")
-
-    long_reason = mw.parse_classification(
-        '{"category":"SPAM","priority":"LOW","reason":"' + "x" * 300 + '"}'
+    hyphen = mw.parse_classification('{"category":"SPAM-VALUABLE","summary":"-50%"}')
+    check(
+        "classify: hyphenated category",
+        hyphen.category == "SPAM_VALUABLE" and hyphen.priority == "HIGH",
     )
-    check("classify: reason truncated", len(long_reason.reason) <= mw.MAX_REASON_CHARS)
+    check("classify: valuable flag", hyphen.is_valuable_spam)
+
+    valuable = mw.parse_classification(
+        '{"category":"SPAM_VALUABLE","summary":"Промокод SALE50",'
+        '"spam_tag":"promo","spam_url":"https://shop.test/promo"}'
+    )
+    check("classify: spam tag", valuable.spam_tag == "promo")
+    check("classify: spam url", valuable.spam_url == "https://shop.test/promo")
+
+    unsafe = mw.parse_classification(
+        '{"category":"SPAM_VALUABLE","summary":"x","spam_url":"javascript:alert(1)"}'
+    )
+    check("classify: unsafe url dropped", unsafe.spam_url is None)
+
+    legacy = mw.parse_classification(
+        '{"category":"VACANCY","priority":"LOW","reason":"legacy hr"}'
+    )
+    check(
+        "classify: legacy reason kept, priority derived",
+        legacy.reason == "legacy hr" and legacy.priority == "HIGH",
+    )
+
+    long_summary = mw.parse_classification('{"category":"SPAM","summary":"' + "x" * 900 + '"}')
+    check(
+        "classify: summary truncated",
+        len(long_summary.summary) <= mw.MAX_CLASSIFICATION_SUMMARY_CHARS,
+    )
+    long_tag = mw.parse_classification('{"category":"SPAM_VALUABLE","summary":"s","spam_tag":"' + "t" * 200 + '"}')
+    check("classify: tag truncated", len(long_tag.spam_tag or "") <= mw.MAX_SPAM_TAG_CHARS)
+
+    schema = mw.EmailClassification.model_json_schema()
+    check(
+        "classify: schema fields",
+        set(schema.get("properties", {})) == {"category", "summary", "spam_tag", "spam_url"},
+    )
+    check("classify: schema requires category", schema.get("required") == ["category"])
 
     expect_ai_error(
         "classify: unknown category",
-        lambda: mw.parse_classification('{"category":"IMPORTANT","priority":"HIGH"}'),
+        lambda: mw.parse_classification('{"category":"IMPORTANT","summary":"x"}'),
     )
     expect_ai_error(
-        "classify: bad priority",
-        lambda: mw.parse_classification('{"category":"SPAM","priority":"MEDIUM"}'),
+        "classify: missing category",
+        lambda: mw.parse_classification('{"summary":"no category"}'),
+    )
+    expect_ai_error(
+        "classify: legacy priority alone is not enough",
+        lambda: mw.parse_classification('{"priority":"LOW","reason":"x"}'),
     )
     expect_ai_error("classify: non-json", lambda: mw.parse_classification("not json at all"))
     expect_ai_error("classify: empty", lambda: mw.parse_classification(""))
@@ -537,27 +764,38 @@ def minimal_block(**overrides: Any) -> dict[str, Any]:
 
 
 def test_project_config() -> None:
-    """Боевой ``config/orchestrator.json``: ящики, модели, адрес ядра, секреты из env."""
+    """Боевой ``config/orchestrator.json``: ящик Mail.ru, лимиты ИИ, PostgreSQL, секреты."""
     project_config = PROJECT_ROOT / "config" / "orchestrator.json"
     settings = mw.load_settings(project_config)
-    check("config: two providers", len(settings.providers) == 2)
-    check("config: provider ids", [p.id for p in settings.providers] == ["primary", "secondary"])
+    check("config: one config provider", len(settings.providers) == 1)
+    check("config: provider id", settings.providers[0].id == "primary")
+    check(
+        "config: main mailbox",
+        settings.providers[0].username == "oshkines@mail.ru",
+        settings.providers[0].username,
+    )
+    check("config: imap host", settings.providers[0].host == "imap.mail.ru")
     check("config: classifier model", settings.ai.classifier_model == "deepseek-chat")
     check("config: summarizer model", settings.ai.summarizer_model == "deepseek-reasoner")
+    check("config: fallback model", settings.ai.fallback_model == "deepseek-reasoner")
     check("config: classify chars", settings.ai.classify_chars == 200)
     check("config: json mode", settings.ai.json_mode is True)
+    check("config: ai timeout 15s", settings.ai.timeout_sec == 15.0, settings.ai.timeout_sec)
+    check("config: retry attempts", settings.ai.retry_attempts == 3)
+    check("config: retry delay", settings.ai.retry_base_delay_sec == 1.5)
+    check("config: max tokens", settings.ai.max_tokens == 400)
     check(
         "config: core endpoint",
         settings.core.endpoint == "http://127.0.0.1:8080/api/v1/notify",
         settings.core.endpoint,
     )
     check("config: api key from env", settings.ai.ready)
-    check("config: credentials from env", all(provider.has_credentials for provider in settings.providers))
+    check("config: credentials from env", settings.providers[0].has_credentials)
     check(
-        "config: white list parsed",
-        settings.providers[0].white_list == frozenset({"boss@example.com"}),
+        "config: masked account",
+        settings.providers[0].masked_account == "o***@mail.ru",
+        settings.providers[0].masked_account,
     )
-    check("config: masked account", settings.providers[0].masked_account == "i***@yandex.ru")
     check(
         "config: limits",
         settings.limits.snippet_bytes == 4096 and settings.limits.max_delivery_attempts == 3,
@@ -566,10 +804,24 @@ def test_project_config() -> None:
         "config: reconnect",
         settings.reconnect.initial_delay_sec == 5.0 and settings.reconnect.max_delay_sec == 300.0,
     )
-    check("config: no secret in describe", SECRET_PASSWORD not in json.dumps(mw.describe_settings(settings, settings.providers), ensure_ascii=False))
 
-    only = mw.load_settings(project_config, only_providers=["secondary"])
-    check("config: --provider filter", len(only.providers) == 1 and only.providers[0].id == "secondary")
+    check("config: database from env", settings.database.ready)
+    check("config: database dsn env", settings.database.dsn_env == "DATABASE_URL")
+    check(
+        "config: database migration",
+        settings.database.migrations_path == "db/migrations/001_init_schema.sql",
+    )
+    check(
+        "config: database pool",
+        settings.database.min_size == 1 and settings.database.max_size == 5,
+    )
+    description = json.dumps(mw.describe_settings(settings, settings.providers), ensure_ascii=False)
+    check("config: no password in describe", SECRET_PASSWORD not in description)
+    check("config: dsn masked in describe", "unit-test-dsn" not in description, description[:200])
+    check("config: timeout in describe", '"timeout_sec": 15.0' in description)
+
+    only = mw.load_settings(project_config, only_providers=["primary"])
+    check("config: --provider filter", len(only.providers) == 1 and only.providers[0].id == "primary")
     expect_config_error(
         "config: unknown provider",
         lambda: mw.load_settings(project_config, only_providers=["nope"]),
@@ -634,6 +886,31 @@ def test_temp_configs() -> None:
                 )
             ),
         )
+        expect_config_error(
+            "config: literal dsn forbidden",
+            lambda: mw.load_settings(
+                write_config(
+                    directory,
+                    "dsn.json",
+                    {
+                        "workers": {"mail_worker": minimal_block()},
+                        "storage": {"postgres": {"dsn": "postgresql://u:p@h/db"}},
+                    },
+                )
+            ),
+        )
+        with_env_dsn = write_config(
+            directory,
+            "dnsenv.json",
+            {
+                "workers": {"mail_worker": minimal_block()},
+                "storage": {"postgres": {"dsn": "ENV_DATABASE_URL", "max_pool_size": 2}},
+            },
+        )
+        dsn_settings = mw.load_settings(with_env_dsn)
+        check("config: dsn from ENV name", dsn_settings.database.ready)
+        check("config: dsn env name", dsn_settings.database.dsn_env == "ENV_DATABASE_URL")
+
         expect_config_error(
             "config: invalid json",
             lambda: mw.load_settings(write_text(directory, "broken.json", "{")),
@@ -903,6 +1180,401 @@ async def test_reconnect() -> None:
     check("session: select rejected raises", raised)
     check("session: logout after auth", reject.logged_out)
 
+async def test_valuable_spam_flow() -> None:
+    """SPAM_VALUABLE: запись в valuable_spam + \\Deleted; при недоступной БД удаления нет."""
+    account = make_account()
+    provider = account.to_provider()
+    gateway = FakeGateway(accounts=[account])
+    notifier = FakeNotifier()
+    imap = FakeImap(
+        single_message(sender="Shop <promo@shop.test>", subject="SALE 50%", body="SALE 50%")
+    )
+
+    async def valuable_classifier(
+        client: Any, ai: Any, envelope: Any, snippet: str
+    ) -> mw.Classification:
+        return mw.Classification(
+            "SPAM_VALUABLE",
+            "HIGH",
+            "promo",
+            summary="Скидка 50% по промокоду SALE50",
+            spam_tag="promo",
+            spam_url="https://shop.test/sale",
+        )
+
+    worker = make_worker(
+        make_settings(provider=provider),
+        imap,
+        notifier=notifier,
+        classifier=valuable_classifier,
+        gateway=gateway,
+    )
+    with quiet() as (out, _err):
+        processed = await worker.poll_once(imap)
+    check("valuable: processed", processed == 1, processed)
+    check("valuable: email persisted", len(gateway.emails) == 1)
+    check(
+        "valuable: email classified",
+        gateway.emails[0].category == "SPAM_VALUABLE"
+        and gateway.emails[0].status == "classified",
+        gateway.emails[0],
+    )
+    check("valuable: ai model recorded", gateway.emails[0].ai_model == "deepseek-chat")
+    check("valuable: spam saved", len(gateway.valuable) == 1)
+    spam_email_id, spam_record = gateway.valuable[0]
+    check("valuable: spam tag", spam_record.spam_tag == "promo")
+    check("valuable: spam url", spam_record.spam_url == "https://shop.test/sale")
+    check("valuable: summary", "SALE50" in (spam_record.summary or ""))
+    check("valuable: db mark deleted", gateway.deleted == [spam_email_id])
+    check(
+        "valuable: imap deleted flag",
+        ("store", ("1", "+FLAGS", "(\\Deleted)")) in imap.calls,
+        imap.calls,
+    )
+    check("valuable: seen marked", imap.seen == ["1"])
+    payload = notifier.payloads[0]
+    check("valuable: action", payload["action"] == "spam_valuable")
+    check("valuable: payload tag", payload["spam_tag"] == "promo")
+    check("valuable: payload url", payload["spam_url"] == "https://shop.test/sale")
+    check("valuable: payload summary", "SALE50" in (payload["summary"] or ""))
+    check("valuable: event emitted", '"action": "spam_valuable"' in out.getvalue())
+
+    # БД недоступна: письмо не удаляется, уведомление помечено db_unavailable.
+    failing = FakeGateway(accounts=[account], fail=True)
+    imap2 = FakeImap(
+        single_message(sender="Shop <promo@shop.test>", subject="SALE", body="SALE")
+    )
+    notifier2 = FakeNotifier()
+    worker2 = make_worker(
+        make_settings(provider=provider),
+        imap2,
+        notifier=notifier2,
+        classifier=valuable_classifier,
+        gateway=failing,
+    )
+    with quiet():
+        processed2 = await worker2.poll_once(imap2)
+    check("valuable db down: processed", processed2 == 1, processed2)
+    check(
+        "valuable db down: no delete",
+        not any("Deleted" in str(args) for name, args in imap2.calls if name == "store"),
+        imap2.calls,
+    )
+    check("valuable db down: flagged", notifier2.payloads[0].get("db_unavailable") is True)
+    check("valuable db down: seen", imap2.seen == ["1"])
+
+
+async def test_folder_sync() -> None:
+    """--sync-folders: LIST -> mail_folders, декодирование кириллицы Mail.ru."""
+    account = make_account()
+    provider = account.to_provider()
+    gateway = FakeGateway(accounts=[account])
+    imap = FakeImap(
+        {},
+        folders=[
+            b'(\\HasNoChildren) "/" "INBOX"',
+            '(\\HasNoChildren) "/" "&BB4EQgQ,BEAEMAQyBDsENQQ9BD0ESwQ1-"',
+            b'(\\Noselect \\HasChildren) "/" "Archive"',
+            b"* OK server ready",
+        ],
+    )
+    worker = mw.MailboxWorker(
+        make_settings(provider=provider),
+        provider,
+        gateway=gateway,
+        imap_factory=lambda _provider: imap,
+        once=True,
+        sleeper=_instant_sleep,
+    )
+    with quiet() as (out, _err):
+        saved = await worker.folder_sync()
+    check("folders: saved", saved == 3, saved)
+    check("folders: db account", gateway.folders and gateway.folders[0][0] == account.id)
+    folders = gateway.folders[0][1]
+    check("folders: inbox", folders[0].name == "INBOX" and folders[0].delimiter == "/")
+    check("folders: cyrillic decoded", folders[1].name == "Отправленные", folders[1].name)
+    check("folders: raw kept", folders[1].raw_name.startswith("&BB4"))
+    check("folders: noselect", folders[2].is_selectable is False)
+    check("folders: list command", ("list", ('""', '"*"')) in imap.calls, imap.calls)
+    check("folders: logged out", imap.logged_out)
+    check("folders: event", '"action": "folders_synced"' in out.getvalue())
+    check("folders: account touched", gateway.touched and gateway.touched[0][0] == account.id)
+
+    without_db = mw.MailboxWorker(
+        make_settings(provider=provider),
+        provider,
+        imap_factory=lambda _provider: imap,
+    )
+    raised = False
+    with quiet():
+        try:
+            await without_db.folder_sync()
+        except mw.ConfigError:
+            raised = True
+    check("folders: db required", raised)
+
+
+async def test_database_gateway() -> None:
+    """AsyncpgGateway: RLS-выборка ящиков, overrides ИИ, запись писем и папок."""
+    account_row: dict[str, Any] = {
+        "id": 1,
+        "label": "Main Mail.ru mailbox",
+        "email": "oshkines@mail.ru",
+        "imap_host": "imap.mail.ru",
+        "imap_port": 993,
+        "use_ssl": True,
+        "mailbox": "INBOX",
+        "env_password_key": "ENV_MAIL_PRIMARY_PASSWORD",
+        "username_env_key": "ENV_MAIL_PRIMARY_USERNAME",
+        "poll_interval_sec": 120,
+        "max_messages_per_poll": 10,
+        "is_active": True,
+    }
+    inactive_row = dict(account_row, id=2, email="off@mail.ru", is_active=False)
+    pool = FakePool(
+        rows=[account_row, inactive_row],
+        ai_rows=[
+            {
+                "scope": "global",
+                "scope_key": "classifier",
+                "model": "deepseek-chat",
+                "fallback_model": "deepseek-reasoner",
+                "max_tokens": 256,
+                "temperature": 0.1,
+                "priority": 10,
+            }
+        ],
+    )
+    gateway = mw.AsyncpgGateway(pool)
+    with quiet():
+        accounts = await gateway.fetch_active_accounts()
+    check("db: inactive filtered", [a.email for a in accounts] == ["oshkines@mail.ru"])
+    check(
+        "db: account fields",
+        accounts[0].imap_port == 993
+        and accounts[0].env_password_key == "ENV_MAIL_PRIMARY_PASSWORD"
+        and accounts[0].label == "Main Mail.ru mailbox",
+    )
+    check("db: rls query without where", "WHERE" not in mw.SQL_FETCH_ACCOUNTS.upper())
+    check("db: account id", accounts[0].id == 1)
+
+    overrides = await gateway.fetch_ai_overrides()
+    check(
+        "db: ai overrides",
+        overrides
+        == {
+            "model": "deepseek-chat",
+            "fallback_model": "deepseek-reasoner",
+            "max_tokens": 256,
+        },
+        overrides,
+    )
+    applied = mw.apply_ai_overrides(mw.AISettings(api_key="key"), overrides)
+    check("db: overrides applied", applied.max_tokens == 256)
+    check("db: overrides source", applied.instruction_source == "database")
+    capped = mw.apply_ai_overrides(mw.AISettings(), {"max_tokens": 99_999})
+    check("db: tokens capped", capped.max_tokens == mw.MAX_AI_TOKENS_CAP)
+    unchanged = mw.apply_ai_overrides(mw.AISettings(), {})
+    check("db: no overrides", unchanged.instruction_source == "config")
+
+    saved = await gateway.save_folders(1, [mw.FolderInfo(name="INBOX", delimiter="/")])
+    check("db: folders saved", saved == 1)
+    record = mw.EmailRecord(
+        account_id=1,
+        external_id="m1@example.org",
+        sender="shop@example.org",
+        sender_name="Shop",
+        subject="Sale",
+        received_at=datetime.now(tz=mw.MSK_FALLBACK),
+        category="SPAM_VALUABLE",
+        priority="HIGH",
+        summary="Скидка 50%",
+        spam_tag="promo",
+        spam_url="https://shop.test/sale",
+    )
+    email_id = await gateway.upsert_email(record)
+    check("db: email id", email_id == 11)
+    check("db: valuable saved", await gateway.save_valuable_spam(email_id, record))
+    await gateway.mark_email_deleted(email_id)
+    await gateway.touch_account(1, error="boom")
+    check("db: email upsert query", any("INSERT INTO emails" in q for q, _ in pool.queries))
+    check("db: mark deleted executed", any("UPDATE emails" in q for q, _ in pool.executed))
+    check("db: touch executed", any("last_sync_at" in q for q, _ in pool.executed))
+    check("db: touch error stored", any(args[-1] == "boom" for _, args in pool.executed))
+
+    providers = mw.build_account_providers(
+        [make_account()],
+        [
+            mw.ProviderSettings(
+                id="primary",
+                host="imap.mail.ru",
+                username="oshkines@mail.ru",
+                white_list=frozenset({"boss@corp.ru"}),
+            )
+        ],
+    )
+    check("db: provider from account", providers[0].id == "oshkines@mail.ru")
+    check("db: provider account id", providers[0].account_id == 7)
+    check("db: whitelist inherited", providers[0].white_list == frozenset({"boss@corp.ru"}))
+    filtered = mw.build_account_providers([make_account()], [], only_accounts=["other@mail.ru"])
+    check("db: account filter", filtered == [])
+
+
+async def test_retry_and_fallback() -> None:
+    """ИИ: 3 попытки с backoff, переключение на fallback-модель и жёсткий таймаут."""
+    ai = mw.AISettings(
+        api_key=SECRET_API_KEY,
+        classifier_model="primary-model",
+        fallback_model="backup-model",
+        retry_attempts=3,
+        retry_base_delay_sec=0.001,
+        timeout_sec=0.2,
+        max_tokens=128,
+        json_mode=False,
+    )
+    messages = [{"role": "user", "content": "hello"}]
+    client = FakeAIClient(
+        [
+            RuntimeError("502 bad gateway"),
+            RuntimeError("429 too many requests"),
+            completion('{"category":"SPAM","summary":"ads"}'),
+        ]
+    )
+    raw = await mw.request_chat(
+        client, ai, ai.classifier_model, messages, max_tokens=128, json_mode=False
+    )
+    check("retry: third attempt succeeded", "SPAM" in raw)
+    calls = client.completions.calls
+    check("retry: three calls", len(calls) == 3, len(calls))
+    check("retry: same model", all(call["model"] == "primary-model" for call in calls))
+    check("retry: json mode off", all("response_format" not in call for call in calls))
+    check("retry: max tokens forwarded", all(call["max_tokens"] == 128 for call in calls))
+
+    fallback_client = FakeAIClient(
+        [
+            RuntimeError("503"),
+            RuntimeError("503"),
+            RuntimeError("503"),
+            completion("fallback-answer"),
+        ]
+    )
+    answer = await mw.request_chat(
+        fallback_client, ai, ai.classifier_model, messages, max_tokens=64, json_mode=False
+    )
+    fallback_calls = fallback_client.completions.calls
+    check("fallback: answer", answer == "fallback-answer")
+    check("fallback: four calls", len(fallback_calls) == 4, len(fallback_calls))
+    check(
+        "fallback: first three on primary",
+        [call["model"] for call in fallback_calls[:3]] == ["primary-model"] * 3,
+    )
+    check("fallback: model switched", fallback_calls[-1]["model"] == "backup-model")
+
+    class HangingCompletions:
+        async def create(self, **kwargs: Any) -> Any:
+            await asyncio.sleep(5)
+
+    hanging = type(
+        "Client", (), {"chat": type("Chat", (), {"completions": HangingCompletions()})()}
+    )()
+    timed_out = False
+    with quiet():
+        try:
+            await mw.request_chat(
+                hanging,
+                mw.AISettings(
+                    api_key="key", timeout_sec=0.02, retry_attempts=1, json_mode=False
+                ),
+                "primary-model",
+                messages,
+                max_tokens=32,
+                json_mode=False,
+            )
+        except mw.AiAnalysisError as exc:
+            timed_out = "timeout" in str(exc)
+    check("timeout: ai analysis error", timed_out)
+
+    exhausted = ""
+    with quiet():
+        try:
+            await mw.request_chat(
+                FakeAIClient([RuntimeError("down")] * 4),
+                mw.AISettings(
+                    api_key="key",
+                    retry_attempts=1,
+                    retry_base_delay_sec=0.01,
+                    json_mode=False,
+                ),
+                "primary-model",
+                messages,
+                max_tokens=10,
+                json_mode=False,
+            )
+        except mw.AiAnalysisError as exc:
+            exhausted = str(exc)
+    check("retry: all models failed", "all models failed" in exhausted, exhausted)
+
+
+def test_artifacts() -> None:
+    """Артефакты ДЗ: миграция, ER-документ, PostgreSQL в конфиге, ASCII-only."""
+    migration = PROJECT_ROOT / "db" / "migrations" / "001_init_schema.sql"
+    architecture = PROJECT_ROOT / "architecture.md"
+    check("artifacts: migration exists", migration.is_file())
+    check("artifacts: architecture exists", architecture.is_file())
+    if not migration.is_file() or not architecture.is_file():
+        return
+
+    sql = migration.read_text(encoding="utf-8")
+    tables = (
+        "mail_accounts",
+        "mail_folders",
+        "emails",
+        "valuable_spam",
+        "rzhd_tickets",
+        "vacancies",
+        "ai_instructions",
+    )
+    for table in tables:
+        check(f"sql: table {table}", f"CREATE TABLE IF NOT EXISTS {table}" in sql)
+    check("sql: role created", "CREATE ROLE navigator_worker" in sql)
+    check("sql: role nologin", "navigator_worker NOLOGIN" in sql)
+    check("sql: rls enabled for 7 tables", sql.count("ENABLE ROW LEVEL SECURITY") == 7)
+    check("sql: active policy", "USING (is_active)" in sql)
+    check("sql: grants", "GRANT SELECT ON mail_accounts TO navigator_worker" in sql)
+    check("sql: main mailbox seeded", "oshkines@mail.ru" in sql)
+    check("sql: ai limits seeded", "max_tokens" in sql and "ai_instructions" in sql)
+    check("sql: transaction committed", "BEGIN;" in sql and "COMMIT;" in sql)
+
+    doc = architecture.read_text(encoding="utf-8")
+    check("doc: mermaid er", "erDiagram" in doc)
+    check("doc: all 7 tables", all(f"`{table}`" in doc for table in tables))
+    check("doc: rls section", "Row-Level Security" in doc)
+    check("doc: role documented", "navigator_worker" in doc)
+    check("doc: index rationale", "Обоснование" in doc or "обоснование" in doc)
+    check("doc: structured output", "EmailClassification" in doc)
+    check("doc: timeout documented", "15" in doc and "retry" in doc.lower())
+
+    raw_config = (PROJECT_ROOT / "config" / "orchestrator.json").read_bytes().decode("utf-8-sig")
+    check("config: ascii only", re.search("[\u0400-\u04FF]", raw_config) is None)
+    config = json.loads(raw_config)
+    workers = [worker for worker in config["workers"] if worker.get("id") == "mail_worker"]
+    check("config: mail_worker declared", len(workers) == 1)
+    if not workers:
+        return
+    check("config: mail_worker enabled", workers[0]["enabled"] is True)
+    check(
+        "config: main mailbox in provider",
+        workers[0]["providers"][0]["label"] == "oshkines@mail.ru",
+    )
+    check("config: ai timeout", workers[0]["ai"]["timeout_sec"] == 15)
+    check("config: ai retry", workers[0]["ai"]["retry_attempts"] == 3)
+    check("config: fallback model", workers[0]["ai"]["fallback_model"] == "deepseek-reasoner")
+    check("config: postgres primary", config["storage"]["primary"] == "postgres")
+    check("config: postgres dsn env", config["storage"]["postgres"]["dsn_env"] == "DATABASE_URL")
+    check("config: postgres role", config["storage"]["postgres"]["role"] == "navigator_worker")
+    check("config: seven tables", len(config["storage"]["postgres"]["tables"]) == 7)
+
+
 def test_cli() -> None:
     """CLI: ``--dry-run``, отсутствие секретов в выводе и коды выхода 0/2."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -938,7 +1610,7 @@ def test_cli() -> None:
         )
         out = io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
-            code = mw.main(["--config", str(nocreds)])
+            code = mw.main(["--config", str(nocreds), "--no-db"])
         check("cli: missing credentials exit 2", code == mw.EXIT_CONFIG_ERROR, code)
         check("cli: config error event", '"reason": "config_error"' in out.getvalue(), out.getvalue()[:120])
 
@@ -950,12 +1622,16 @@ def test_cli() -> None:
             directory, "disabled.json", {"workers": {"mail_worker": minimal_block(enabled=False)}}
         )
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            code = mw.main(["--config", str(disabled)])
+            code = mw.main(["--config", str(disabled), "--no-db"])
         check("cli: disabled worker exit 0", code == 0, code)
+
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            code = mw.main(["--config", str(config), "--sync-folders", "--no-db"])
+        check("cli: sync-folders without db exit 2", code == mw.EXIT_CONFIG_ERROR, code)
 
 
 def test_no_threads() -> None:
-    """Pure Async: в исходнике нет потоков и ``asyncio.to_thread``."""
+    """Pure Async: в исходнике нет потоков, есть asyncpg, Pydantic и режим папок."""
     source = (PROJECT_ROOT / "agents" / "mail_worker.py").read_text(encoding="utf-8")
     check("source: no to_thread", "to_thread(" not in source)
     check("source: no threading import", "import threading" not in source and "Thread(" not in source)
@@ -964,16 +1640,24 @@ def test_no_threads() -> None:
     check("source: httpx used", "import httpx" in source)
     check("source: AsyncOpenAI used", "AsyncOpenAI" in source)
     check("source: reconnect backoff used", "next_delay" in source)
+    check("source: asyncpg used", "asyncpg" in source)
+    check("source: pydantic schema", "BaseModel" in source and "ConfigDict" in source)
+    check("source: rls policy documented", "mail_accounts_worker_select_active" in source)
+    check("source: sync folders mode", "--sync-folders" in source)
+    check("source: dotenv loader", "load_dotenv" in source)
+    check("source: dsn masking", "def mask_dsn" in source)
 
 
 def main() -> int:
     """Запускает все проверки и возвращает код выхода 0/1."""
     backup = {key: os.environ.get(key) for key in ENV_KEYS}
     os.environ["ENV_DEEPSEEK_API_KEY"] = SECRET_API_KEY
-    os.environ["ENV_MAIL_PRIMARY_USERNAME"] = "ivan@yandex.ru"
+    os.environ["ENV_MAIL_PRIMARY_USERNAME"] = "oshkines@mail.ru"
     os.environ["ENV_MAIL_PRIMARY_PASSWORD"] = SECRET_PASSWORD
     os.environ["ENV_MAIL_SECONDARY_USERNAME"] = "petr@mail.ru"
     os.environ["ENV_MAIL_SECONDARY_PASSWORD"] = SECRET_PASSWORD
+    os.environ["DATABASE_URL"] = TEST_DSN
+    os.environ["ENV_DATABASE_URL"] = TEST_DSN
     try:
         test_text_helpers()
         test_classification_parsing()
@@ -983,6 +1667,11 @@ def main() -> int:
         asyncio.run(test_cascade_basic())
         asyncio.run(test_cascade_edges())
         asyncio.run(test_reconnect())
+        asyncio.run(test_valuable_spam_flow())
+        asyncio.run(test_folder_sync())
+        asyncio.run(test_database_gateway())
+        asyncio.run(test_retry_and_fallback())
+        test_artifacts()
         test_cli()
         test_no_threads()
     finally:

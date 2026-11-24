@@ -19,8 +19,8 @@ export const DEFAULT_NAVIGATION: readonly NavItemConfig[] = [
     label_key: "nav.email",
     icon: "mail",
     order: 10,
-    worker_ids: ["email_watcher"],
-    storage_table: "processed_emails",
+    worker_ids: ["mail_worker", "email_watcher"],
+    storage_table: "emails",
   },
   {
     id: "vacancies",
@@ -105,6 +105,41 @@ export function findSection(
   id: string,
 ): DashboardNavSection | null {
   return sections.find((section) => section.id === id) ?? null;
+}
+
+/**
+ * Cron из `orchestrator.json` → человеческая подпись для UI.
+ *
+ * Поддержаны только безопасные шаблоны (`*\/N`, `0 *\/N`, фиксированное время):
+ * всё остальное отдаётся как есть, чтобы подпись никогда не «врала» о расписании.
+ * `null` (демон без cron) → «постоянный опрос».
+ */
+export function describeSchedule(schedule: string | null): string {
+  if (schedule === null || schedule.trim().length === 0) {
+    return "постоянный опрос (демон)";
+  }
+
+  const raw = schedule.trim();
+  const fields = raw.split(/\s+/);
+  if (fields.length !== 5) {
+    return raw;
+  }
+
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = fields;
+  const everyDay = dayOfMonth === "*" && month === "*" && dayOfWeek === "*";
+  const everyMinute = /^\*\/(\d+)$/.exec(minute);
+  const everyHour = /^\*\/(\d+)$/.exec(hour);
+
+  if (everyDay && everyMinute !== null && hour === "*") {
+    return `каждые ${Number(everyMinute[1])} мин`;
+  }
+  if (everyDay && minute === "0" && everyHour !== null) {
+    return `каждые ${Number(everyHour[1])} ч`;
+  }
+  if (everyDay && /^\d+$/.test(minute) && /^\d+$/.test(hour)) {
+    return `ежедневно в ${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
+  }
+  return raw;
 }
 
 export function countEnabledWorkers(config: OrchestratorConfig): number {

@@ -13,6 +13,33 @@
 
 Интерфейс собран как рабочая панель инженера, а не маркетинговый лендинг: тёмная canvas-подложка, плотный bento-макет, моноширинные логи и явно показанные состояния. Вся визуальная логика выведена из `design.md`, поэтому на скриншотах ниже — реальные экраны production-сборки, а не макеты.
 
+## ⚙️ Backend API, PostgreSQL + RLS и AI-интеграция (TDD)
+
+Бэкенд-слой проекта реализован на **FastAPI** + **PostgreSQL 16** (`asyncpg`) с соблюдением принципов spec-driven разработки, безопасности данных и устойчивой интеграции с LLM:
+
+- **Схема БД и безопасность (`architecture.md` + `db/migrations/`):**
+  - Спроектированы и развёрнуты 7 нормализованных таблиц (`mail_accounts`, `mail_folders`, `emails`, `valuable_spam`, `rzhd_tickets`, `vacancies`, `ai_instructions`) с B-Tree и GIN-индексами.
+  - Настроена выделенная роль `navigator_worker` по принципу наименьших привилегий (`002_tighten_worker_grants.sql`) и политики **Row-Level Security (RLS)** — воркер имеет доступ строго к активным почтовым ящикам (`is_active = TRUE`), а критические таблицы защищены от удаления. Все политики проверены серией из 27 негативных SQL-тестов (`ERROR 42501`).
+- **REST API и TDD-покрытие (`docs/api_spec.md`, `api/main.py`, `tests/test_api_tdd.py`):**
+  - Реализованы эндпоинты сводки дашборда (`/api/v1/dashboard/summary`), синхронизации и чтения папок IMAP (`/api/v1/mail/folders` — подтянуты реальные 19 папок ящика `oshkines@mail.ru`), CRUD для вакансий и билетов РЖД, а также настроен CORS.
+  - Написан и пройден набор из **31 автотеста** на `pytest` + `httpx.AsyncClient` (`exit code 0`).
+- **AI-классификатор с контролем стоимости и ошибок (`POST /api/v1/ai/classify-preview`):**
+  - Интеграция с LLM (DeepSeek) через строгую **Pydantic-схему (Structured Output)** с лимитом `max_tokens` из таблицы `ai_instructions`, жёстким таймаутом (15 с), экспоненциальным `retry` (до 3 попыток) и автоматическим переключением на `fallback`-модель при сбоях.
+- **Живая интеграция с фронтендом (`web/lib/api/`):**
+  - Главный дашборд `/` и раздел `/email` подключены к живому FastAPI с graceful fallback при недоступности сервера.
+
+### 📸 Работающий сценарий (PostgreSQL + FastAPI + AI-классификация)
+
+![Backend Dashboard Live](docs/screenshots/backend-dashboard.png)
+*Главный дашборд: статус `API online`, реальные счётчики и синхронизированные папки из PostgreSQL.*
+
+![List Email](docs/screenshots/Email.png)
+*Страница `/email`: сама страница.*
+
+![AI Classification Live](docs/screenshots/ai-classify-live.png)
+*Страница `/email`: живой тест AI-классификации (Structured Output) с определением категории `SPAM_VALUABLE`, генерацией выжимки и сохранением в БД.*
+
+
 ### 🖥️ Главный рабочий экран (`/`)
 
 ![AI Dev Navigator Dashboard](docs/screenshots/dashboard-home.png)
@@ -80,6 +107,32 @@ Set-Location ..
 .\.venv\Scripts\python.exe agents\mail_worker.py --dry-run
 .\.venv\Scripts\python.exe agents\mail_worker.py --once --provider primary
 ```
+
+## 🔌 Backend API (FastAPI + PostgreSQL + LLM)
+
+Спецификация контракта — **`docs/api_spec.md`** (Pydantic-модели, коды ошибок, каскад LLM).
+Реализация — `api/main.py`, исполняемая спецификация — `tests/test_api_tdd.py` (TDD: тесты написаны до кода).
+
+```powershell
+# 1. Запуск API (порт 8000, Swagger UI: http://127.0.0.1:8000/docs)
+.\.venv\Scripts\python.exe -m uvicorn api.main:app --host 127.0.0.1 --port 8000
+
+# 2. TDD-набор: 31 тест, БД и LLM подменены фейками (без сети и токенов)
+.\.venv\Scripts\python.exe -m pytest            # 31 passed
+```
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/api/v1/health` | здоровье сервиса, БД (`latency_ms`) и LLM-провайдера |
+| GET | `/api/v1/dashboard/summary` | сводка Bento: папки/письма, `valuable_spam`, вакансии, РЖД, лимиты ИИ |
+| GET/PATCH | `/api/v1/mail/folders[/{id}]` | папки IMAP + режим сканирования (`full`/`headers`/`skip`) |
+| GET/POST/PATCH/DELETE | `/api/v1/vacancies[/{id}]` | вакансии, игнор по формату работы (`is_ignored`), мягкое удаление |
+| GET/POST | `/api/v1/rzhd/tickets` | найденные билеты РЖД (UPSERT по параметрам предложения) |
+| POST | `/api/v1/ai/classify-preview` | LLM-классификация (DeepSeek/OpenRouter): Structured Output, 15 с, 3 retry, fallback |
+
+Сервис работает ролью `navigator_worker` (least privilege + RLS): ошибки БД → `503 db_unavailable`,
+недоступность обеих моделей → `502 llm_unavailable`, валидация → `422`. CORS открыт для
+`http://localhost:3000`, `http://127.0.0.1:3000` и стенда `http://82.148.236.43:3000`.
 
 ## 🎨 Соответствие `design.md`
 

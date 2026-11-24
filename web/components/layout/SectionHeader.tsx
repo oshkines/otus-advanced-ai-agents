@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 
 import { StatusBadge } from "@/components/layout/StatusBadge";
 import { Topbar } from "@/components/layout/Topbar";
@@ -10,6 +10,11 @@ export interface SectionHeaderProps {
   readonly title: string;
   readonly description: string;
   readonly generatedAtIso: string;
+  /**
+   * Свой баннер источника данных (например, `ApiStatusBadge`: API online /
+   * `API offline / fallback`). Без него показывается MOCK-баннер partial-состояния.
+   */
+  readonly banner?: ReactNode;
 }
 
 /** Заголовок страницы-канала: название, описание, статус и метка актуальности данных. */
@@ -18,6 +23,7 @@ export function SectionHeader({
   title,
   description,
   generatedAtIso,
+  banner,
 }: SectionHeaderProps): ReactElement {
   const status = section?.status ?? "not_connected";
 
@@ -28,10 +34,14 @@ export function SectionHeader({
         subtitle={description}
         trailing={<StatusBadge status={status} />}
       />
-      <PartialBanner
-        generatedAtIso={generatedAtIso}
-        note="воркер канала ещё не реализован, источник — SQLite после Phase 6"
-      />
+      {banner === undefined ? (
+        <PartialBanner
+          generatedAtIso={generatedAtIso}
+          note="источник — PostgreSQL через FastAPI, при недоступности API показывается fallback"
+        />
+      ) : (
+        banner
+      )}
     </div>
   );
 }

@@ -10,6 +10,70 @@
   },
   "workers": [
     {
+      "id": "mail_worker",
+      "script": "agents/mail_worker.py",
+      "interpreter": "python",
+      "enabled": true,
+      "schedule": null,
+      "timeout_sec": 900,
+      "stdout_format": "json",
+      "env_required": ["DATABASE_URL", "ENV_DEEPSEEK_API_KEY", "ENV_MAIL_PRIMARY_USERNAME", "ENV_MAIL_PRIMARY_PASSWORD"],
+      "args": [],
+      "label": "oshkines@mail.ru",
+      "ai": {
+        "base_url": "https://api.deepseek.com",
+        "api_key": "ENV_DEEPSEEK_API_KEY",
+        "classifier_model": "deepseek-chat",
+        "summarizer_model": "deepseek-reasoner",
+        "fallback_model": "deepseek-reasoner",
+        "classify_chars": 200,
+        "json_mode": true,
+        "timeout_sec": 15,
+        "retry_attempts": 3,
+        "retry_base_delay_sec": 1.5,
+        "max_tokens": 400,
+        "summary_max_tokens": 700
+      },
+      "core": {
+        "http_url": "http://127.0.0.1:8080",
+        "notify_path": "/api/v1/notify",
+        "timeout_sec": 10,
+        "retries": 2
+      },
+      "limits": {
+        "max_messages_per_poll": 10,
+        "snippet_bytes": 4096,
+        "body_chars": 12000,
+        "summary_chars": 700,
+        "max_delivery_attempts": 3
+      },
+      "reconnect": {
+        "initial_delay_sec": 5,
+        "max_delay_sec": 300,
+        "backoff_factor": 1.7
+      },
+      "providers": [
+        {
+          "id": "primary",
+          "label": "oshkines@mail.ru",
+          "imap_host": "imap.mail.ru",
+          "imap_port": 993,
+          "use_ssl": true,
+          "username": "ENV_MAIL_PRIMARY_USERNAME",
+          "password": "ENV_MAIL_PRIMARY_PASSWORD",
+          "mailbox": "INBOX",
+          "search": ["UNSEEN"],
+          "poll_interval_sec": 120,
+          "connect_timeout_sec": 15,
+          "command_timeout_sec": 30,
+          "max_messages_per_poll": 10,
+          "white_list": [],
+          "white_list_domains": [],
+          "enabled": true
+        }
+      ]
+    },
+    {
       "id": "vacancy_scanner",
       "script": "agents/vacancy_scanner.py",
       "interpreter": "python",
@@ -33,14 +97,14 @@
     },
     {
       "id": "email_watcher",
-      "script": "agents/email_watcher.py",
+      "script": "agents/mail_worker.py",
       "interpreter": "python",
-      "enabled": false,
+      "enabled": true,
       "schedule": "*/10 * * * *",
-      "timeout_sec": 120,
+      "timeout_sec": 300,
       "stdout_format": "json",
-      "env_required": ["EMAIL_IMAP_HOST", "EMAIL_IMAP_USER", "EMAIL_IMAP_PASSWORD"],
-      "args": []
+      "env_required": ["DATABASE_URL", "ENV_MAIL_PRIMARY_USERNAME", "ENV_MAIL_PRIMARY_PASSWORD"],
+      "args": ["--sync-folders"]
     },
     {
       "id": "rzhd_watcher",
@@ -55,10 +119,26 @@
     }
   ],
   "storage": {
+    "primary": "postgres",
+    "postgres": {
+      "driver": "asyncpg",
+      "dsn_env": "DATABASE_URL",
+      "schema": "public",
+      "role": "navigator_worker",
+      "ssl_mode": "prefer",
+      "min_pool_size": 1,
+      "max_pool_size": 5,
+      "connect_timeout_sec": 10,
+      "command_timeout_sec": 15,
+      "dedup_window_days": 30,
+      "migrations": ["db/migrations/001_init_schema.sql"],
+      "tables": ["mail_accounts", "mail_folders", "emails", "valuable_spam", "rzhd_tickets", "vacancies", "ai_instructions"]
+    },
     "sqlite": {
       "path": "data/cache.db",
       "dedup_window_days": 30,
-      "tables": ["processed_messages", "processed_emails"]
+      "tables": ["processed_messages", "processed_emails"],
+      "role": "legacy-dedup-cache"
     }
   },
   "ui": {
@@ -74,8 +154,8 @@
           "label_key": "nav.email",
           "icon": "mail",
           "order": 10,
-          "worker_ids": ["email_watcher"],
-          "storage_table": "processed_emails"
+          "worker_ids": ["mail_worker", "email_watcher"],
+          "storage_table": "emails"
         },
         {
           "id": "vacancies",

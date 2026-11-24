@@ -15,16 +15,17 @@ export interface ChannelCardProps {
 }
 
 /**
- * Карточка канала на обзоре. Клик по карточке ведёт в раздел (п.4.1 DISCUSS.md),
- * sidebar остаётся альтернативным путём навигации (нужен для AC-3: страница
- * канала открывается, даже когда воркера нет).
+ * Карточка канала на обзоре. Клик по карточке всегда ведёт в раздел
+ * (п.4.1 DISCUSS.md), а sidebar остаётся альтернативным путём навигации:
+ * страница канала открывается даже при выключенном воркере.
  *
- * Пока в канале нет включённого воркера (`enabled: false` → `disabled`, либо
- * воркер не описан в `workers[]` → `not_connected`), карточка переходит в
- * визуальное состояние `not_connected`: приглушённый серый текст, ссылка не
- * рендерится (клики заблокированы), причина дописана в footer. Семантический
- * статус не подменяется — его по-прежнему показывает StatusBadge
- * (`data-status="disabled"` для `enabled: false`, см. PRD_CHALLENGE.md AC-1).
+ * Раньше неактивный канал (`enabled: false` → `disabled`, либо воркер не описан
+ * в `workers[]` → `not_connected`) блокировал переход: рендерился не `<Link>`,
+ * а `<section aria-disabled>` с `cursor-not-allowed`. Это оказалось вредным UX —
+ * при живом API разделы открывались, но карточки выглядели «перечёркнутыми».
+ * Теперь навигация не блокируется никогда: состояние канала по-прежнему
+ * показывает StatusBadge (`data-status`), а выключенный воркер отмечается
+ * приглушённым текстом и подсказкой в footer.
  */
 export function ChannelCard({
   section,
@@ -42,7 +43,7 @@ export function ChannelCard({
     footerParts.push(`таблица: ${section.storageTable}`);
   }
   if (inactive) {
-    footerParts.push("переход заблокирован");
+    footerParts.push("воркер выключен — раздел открывается в fallback-режиме");
   }
 
   return (
@@ -50,7 +51,6 @@ export function ChannelCard({
       title={section.label}
       subtitle={section.href}
       href={section.href}
-      inactive={inactive}
       state={visualState}
       testId={`channel-card-${section.id}`}
       revealIndex={revealIndex}

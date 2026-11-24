@@ -4,3 +4,8 @@
 #   uv pip install --python .venv\Scripts\python.exe -r tests\requirements-dev.txt
 #   .\.venv\Scripts\python.exe -m playwright install chromium
 playwright==1.64.1
+
+# TDD Backend API (ДЗ по FastAPI): tests/test_api_tdd.py
+#   pytest - раннер; httpx (см. requirements.txt) - AsyncClient поверх ASGITransport.
+#   Запуск: .\.venv\Scripts\python.exe -m pytest tests\test_api_tdd.py -v
+pytest>=8.3,<9
